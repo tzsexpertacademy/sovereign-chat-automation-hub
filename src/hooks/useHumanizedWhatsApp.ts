@@ -2,7 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import unifiedWhatsAppService, { UnifiedWhatsAppMessage } from '@/services/unifiedWhatsAppService';
 import { useHumanizedTyping } from './useHumanizedTyping';
-import { useMessageBatch } from './useMessageBatch';
+// Removido: import { useMessageBatch } from './useMessageBatch';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useSmartMessageSplit } from './useSmartMessageSplit';
@@ -65,24 +65,12 @@ export const useHumanizedWhatsApp = (clientId: string, initialConfig?: Partial<H
   const smartSplit = useSmartMessageSplit();
   const autoReactions = useAutoReactions(clientId, config.enabled);
 
-  // Message batch processing with REAL API integration
-  const messageBatch = useMessageBatch(
-    useCallback(async (chatId: string, messages: any[]) => {
-      if (!config.enabled) return;
-      
-      console.log(`🤖 [HUMANIZED] Processamento REAL - ${messages.length} mensagens para ${chatId}`);
-      
-      setIsProcessing(true);
-      onlineStatus.setOnline();
-      
-      try {
-        await processMessagesHumanized(chatId, messages);
-      } finally {
-        setIsProcessing(false);
-        onlineStatus.setOffline();
-      }
-    }, [config.enabled])
-  );
+  // Message batch processing DESABILITADO (sistema agora é direto via Edge Function)
+  const mockMessageBatch = {
+    addMessage: (message: any) => console.log('📨 Mock batch - mensagem ignorada:', message.body?.substring(0, 30)),
+    markBatchAsCompleted: (chatId: string) => console.log('✅ Mock batch concluído:', chatId),
+    activeBatches: 0
+  };
 
   // Core humanized processing function
   const processMessagesHumanized = useCallback(async (chatId: string, messages: any[]) => {
@@ -140,9 +128,9 @@ export const useHumanizedWhatsApp = (clientId: string, initialConfig?: Partial<H
     } finally {
       // 5. Log humanization activity
       setHumanizationLogs(prev => [...prev, logEntry].slice(-100)); // Keep last 100 logs
-      messageBatch.markBatchAsCompleted(chatId);
+      mockMessageBatch.markBatchAsCompleted(chatId);
     }
-  }, [config, conversationContext, autoReactions, onlineStatus, messageBatch]);
+  }, [config, conversationContext, autoReactions, onlineStatus, mockMessageBatch]);
 
   // Determine if message needs response
   const shouldRespondToMessage = useCallback((message: any, context: any[]): boolean => {
@@ -344,8 +332,8 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
       preview: message.body?.substring(0, 30) || '[mídia]'
     });
     
-    messageBatch.addMessage(message);
-  }, [config.enabled, messageBatch]);
+    mockMessageBatch.addMessage(message);
+  }, [config.enabled, mockMessageBatch]);
 
   const updatePersonality = useCallback((newPersonality: Partial<HumanizedPersonality>) => {
     setConfig(prev => ({
@@ -367,11 +355,11 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
       totalLogs: humanizationLogs.length,
       conversationContexts: conversationContext.size,
       onlineStatus: onlineStatus.isOnline,
-      activeBatches: messageBatch.activeBatches,
+      activeBatches: mockMessageBatch.activeBatches,
       personality: config.personality,
       lastActivity: humanizationLogs[humanizationLogs.length - 1]?.timestamp
     };
-  }, [isProcessing, humanizationLogs, conversationContext, onlineStatus.isOnline, messageBatch.activeBatches, config.personality]);
+  }, [isProcessing, humanizationLogs, conversationContext, onlineStatus.isOnline, mockMessageBatch.activeBatches, config.personality]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -402,6 +390,6 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
     onlineStatus,
     smartSplit,
     autoReactions,
-    messageBatch
+    messageBatch: mockMessageBatch
   };
 };

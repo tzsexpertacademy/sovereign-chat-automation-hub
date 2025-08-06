@@ -398,16 +398,7 @@ class TicketsService {
         if (leadError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir lead do funil:', leadError);
       }
 
-      // 5. Excluir batches de mensagens
-      const { error: batchesError, count: batchesCount } = await supabase
-        .from('message_batches')
-        .delete({ count: 'exact' })
-        .eq('client_id', client_id)
-        .eq('chat_id', chat_id)
-        .eq('instance_id', instance_id);
-      
-      deletionCounts.message_batches = batchesCount || 0;
-      if (batchesError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir batches:', batchesError);
+      // Sistema de batches removido
 
       // 6. Excluir contexto da conversa (ambos formatos de chat_id)
       const chatIdBase = chat_id.replace('@s.whatsapp.net', '').replace('@s.whats', '').replace('@c.us', '');

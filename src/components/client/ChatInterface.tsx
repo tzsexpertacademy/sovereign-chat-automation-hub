@@ -14,8 +14,8 @@ import { useTicketRealtime } from '@/hooks/useTicketRealtime';
 import TypingIndicator from './TypingIndicator';
 import DiscreteImportPanel from './DiscreteImportPanel';
 import DiscreteProgressToast from './DiscreteProgressToast';
-import { useEmergencyProcessor } from '@/hooks/useEmergencyProcessor';
-import EmergencyProcessingButton from './EmergencyProcessingButton';
+// Removido: import { useEmergencyProcessor } from '@/hooks/useEmergencyProcessor';
+// Removido: import EmergencyProcessingButton from './EmergencyProcessingButton';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -35,15 +35,12 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const { toast } = useToast();
   const { chatId } = useParams();
 
-  // Hook para processador de emergência
-  const { stats: emergencyStats, forceProcessChat } = useEmergencyProcessor(clientId);
+  // Emergency processor removido
 
   // Hook para tempo real
   const {
     tickets,
     isLoading: ticketsLoading,
-    isTyping: assistantTyping,
-    isOnline: assistentOnline,
     reloadTickets
   } = useTicketRealtime(clientId);
 
@@ -266,12 +263,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-gray-900">Conversas</h2>
               <div className="flex items-center space-x-2">
-                {assistentOnline && (
-                  <div className="flex items-center space-x-1 text-green-600">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-medium">Online</span>
-                  </div>
-                )}
+                {/* Online status removido temporariamente */}
                 <Button
                   size="sm"
                   variant="outline"
@@ -385,15 +377,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                       </h3>
                       <div className="flex items-center space-x-2 text-sm text-gray-500">
                         <span className="truncate">{selectedChat?.customer?.phone}</span>
-                        {assistentOnline && (
-                          <>
-                            <span>•</span>
-                            <div className="flex items-center space-x-1 text-green-600">
-                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                              <span className="whitespace-nowrap">Assistente Online</span>
-                            </div>
-                          </>
-                        )}
                       </div>
                       
                       {selectedChat && (
@@ -406,12 +389,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                   
                   {selectedChat && (
                     <div className="flex-shrink-0 ml-4 flex items-center gap-2">
-                      {/* Botão de Processamento de Emergência */}
-                      <EmergencyProcessingButton 
-                        clientId={clientId}
-                        chatId={selectedChat.id}
-                      />
-                      
                       <TicketActionsMenu 
                         ticket={selectedChat} 
                         onTicketUpdate={reloadTickets}
@@ -428,15 +405,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                   ticketId={currentChatId} 
                 />
                 
-                {assistantTyping && (
-                  <div className="px-4 py-2 bg-gray-50 border-t flex-shrink-0">
-                    <TypingIndicator 
-                      isTyping={true}
-                      isRecording={false}
-                      userName="🤖 Assistente IA"
-                    />
-                  </div>
-                )}
               </div>
             </>
           ) : (
@@ -447,12 +415,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                 <p className="text-gray-600 mb-4">
                   Escolha uma conversa da lista para começar a responder mensagens
                 </p>
-                {assistentOnline && (
-                  <div className="mt-4 flex items-center justify-center space-x-2 text-green-600">
-                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-medium">🤖 Assistente Online - Pronto para Atender</span>
-                  </div>
-                )}
               </div>
             </div>
           )}

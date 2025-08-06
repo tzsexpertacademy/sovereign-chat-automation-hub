@@ -1370,42 +1370,6 @@ export type Database = {
         }
         Relationships: []
       }
-      message_batches: {
-        Row: {
-          chat_id: string
-          client_id: string
-          created_at: string
-          id: string
-          instance_id: string
-          last_updated: string
-          messages: Json
-          processing_by: string | null
-          processing_started_at: string | null
-        }
-        Insert: {
-          chat_id: string
-          client_id: string
-          created_at?: string
-          id?: string
-          instance_id: string
-          last_updated?: string
-          messages?: Json
-          processing_by?: string | null
-          processing_started_at?: string | null
-        }
-        Update: {
-          chat_id?: string
-          client_id?: string
-          created_at?: string
-          id?: string
-          instance_id?: string
-          last_updated?: string
-          messages?: Json
-          processing_by?: string | null
-          processing_started_at?: string | null
-        }
-        Relationships: []
-      }
       personalization_comments: {
         Row: {
           attachments: Json | null
@@ -2420,10 +2384,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
-      cleanup_orphaned_batches: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
       emergency_message_recovery: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -2497,33 +2457,6 @@ export type Database = {
           workload_score: number
         }[]
       }
-      manage_message_batch: {
-        Args: {
-          p_chat_id: string
-          p_client_id: string
-          p_instance_id: string
-          p_message: Json
-        }
-        Returns: Json
-      }
-      manage_message_batch_immediate: {
-        Args: {
-          p_chat_id: string
-          p_client_id: string
-          p_instance_id: string
-          p_message: Json
-        }
-        Returns: Json
-      }
-      manage_message_batch_v2: {
-        Args: {
-          p_chat_id: string
-          p_client_id: string
-          p_instance_id: string
-          p_message: Json
-        }
-        Returns: Json
-      }
       monitor_message_health: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -2561,10 +2494,6 @@ export type Database = {
           p_audio_base64?: string
         }
         Returns: string
-      }
-      schedule_immediate_batch_processing: {
-        Args: { p_batch_id: string; p_timeout_seconds?: number }
-        Returns: Json
       }
       upsert_conversation_ticket: {
         Args: {
