@@ -85,7 +85,7 @@ export const WebhookReconfigurationManager: React.FC<WebhookReconfigurationManag
       const newConfig = await unifiedYumerService.getWebhookConfig(instanceId);
       
       if (newConfig.success && newConfig.data) {
-        const isCorrectWebhook = newConfig.data.url.includes('yumer-webhook');
+        const isCorrectWebhook = newConfig.data.url.includes('message-processor');
         if (isCorrectWebhook) {
           updateLastStatus('success', 'Nova configuração validada com sucesso');
         } else {
@@ -169,7 +169,7 @@ export const WebhookReconfigurationManager: React.FC<WebhookReconfigurationManag
             <strong>Instância:</strong> {instanceId}
           </p>
           <p className="text-sm text-muted-foreground">
-            <strong>Objetivo:</strong> Reconfigurar para yumer-webhook
+            <strong>Objetivo:</strong> Reconfigurar para message-processor
           </p>
         </div>
 
@@ -212,7 +212,7 @@ export const WebhookReconfigurationManager: React.FC<WebhookReconfigurationManag
           <p><strong>ℹ️ O que este processo faz:</strong></p>
           <ul className="list-disc list-inside space-y-1 mt-1">
             <li>Verifica a configuração atual do webhook</li>
-            <li>Força uma nova configuração para yumer-webhook</li>
+            <li>Força uma nova configuração para message-processor</li>
             <li>Valida se a mudança foi aplicada corretamente</li>
             <li>Testa a conectividade do novo webhook</li>
           </ul>

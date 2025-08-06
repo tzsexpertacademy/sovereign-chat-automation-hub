@@ -14,6 +14,9 @@ export const AutoWebhookConfigurator: React.FC<AutoWebhookConfiguratorProps> = (
   const { toast } = useToast();
 
   const monitorAndConfigureWebhook = async () => {
+    console.log('🚨 [EMERGENCY] AutoWebhookConfigurator DISABLED - preventing infinite loop');
+    return; // DISABLED TEMPORARILY TO STOP INFINITE LOOP
+    
     try {
       // Verificar status da instância
       const { supabase } = await import('@/integrations/supabase/client');

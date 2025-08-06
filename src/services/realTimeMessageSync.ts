@@ -112,6 +112,9 @@ class RealTimeMessageSync {
   private setupPeriodicSync() {
     if (!this.config) return;
     
+    console.log('🚨 [EMERGENCY] Sync periódico DISABLED - preventing infinite webhook requests');
+    return; // DISABLED TEMPORARILY TO STOP INFINITE LOOP
+    
     console.log('⏰ [REALTIME] Configurando sync periódico a cada 30s...');
     
     this.syncInterval = setInterval(async () => {
