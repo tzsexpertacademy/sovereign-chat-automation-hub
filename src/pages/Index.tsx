@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +12,7 @@ import HumanSupportSection from "@/components/yumerflow/HumanSupportSection";
 import TechBackground from "@/components/effects/TechBackground";
 import GlowingButton from "@/components/effects/GlowingButton";
 import TypingEffect from "@/components/effects/TypingEffect";
+import HeroEffects from "@/components/effects/HeroEffects";
 import yumerLogo from "@/assets/yumer-logo.png";
 import heroImage from "@/assets/hero-yumerflow.jpg";
 import foundersImage from "/lovable-uploads/a77cb0ed-df85-4dbe-be20-c556ca6b2d3d.png";
@@ -43,54 +43,55 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center px-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 to-fuchsia-900/20" />
-        <img src={heroImage} alt="YumerFlow Hero" className="absolute inset-0 w-full h-full object-cover opacity-30" />
-        
-        <div className="relative z-10 text-center max-w-5xl mx-auto">
-          <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight">
-            <span className="bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
-              <TypingEffect text="O Atendimento do Futuro," speed={80} />
-            </span>
-            <br />
-            <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
-              <TypingEffect text="com a Alma do Presente" speed={80} delay={2000} />
-            </span>
-          </h1>
-          
-          <p className="text-2xl mb-4 text-gray-300 max-w-4xl mx-auto leading-relaxed">
-            Transforme seu <span className="text-green-400 font-semibold">WhatsApp</span> em um Especialista que Encanta, Vende e Constrói Relacionamento
-          </p>
-          <p className="text-lg mb-8 text-purple-200">— Sem Parecer IA</p>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10 max-w-4xl mx-auto">
-            <div className="flex items-center space-x-2 text-purple-300">
-              <div className="w-2 h-2 bg-purple-400 rounded-full" />
-              <span className="text-sm">Automatize 90% das interações</span>
-            </div>
-            <div className="flex items-center space-x-2 text-purple-300">
-              <div className="w-2 h-2 bg-purple-400 rounded-full" />
-              <span className="text-sm">Sua própria voz clonada</span>
-            </div>
-            <div className="flex items-center space-x-2 text-purple-300">
-              <div className="w-2 h-2 bg-purple-400 rounded-full" />
-              <span className="text-sm">CRM adaptável</span>
-            </div>
-            <div className="flex items-center space-x-2 text-purple-300">
-              <div className="w-2 h-2 bg-purple-400 rounded-full" />
-              <span className="text-sm">Agendamentos inteligentes</span>
+      {/* Hero Section with Advanced Effects */}
+      <section className="relative">
+        <HeroEffects backgroundImage={heroImage}>
+          <div className="min-h-screen flex items-center justify-center px-6 relative z-50">
+            <div className="text-center max-w-5xl mx-auto">
+              <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight">
+                <span className="bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+                  <TypingEffect text="O Atendimento do Futuro," speed={80} />
+                </span>
+                <br />
+                <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+                  <TypingEffect text="com a Alma do Presente" speed={80} delay={2000} />
+                </span>
+              </h1>
+              
+              <p className="text-2xl mb-4 text-gray-300 max-w-4xl mx-auto leading-relaxed">
+                Transforme seu <span className="text-green-400 font-semibold">WhatsApp</span> em um Especialista que Encanta, Vende e Constrói Relacionamento
+              </p>
+              <p className="text-lg mb-8 text-purple-200">— Sem Parecer IA</p>
+              
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10 max-w-4xl mx-auto">
+                <div className="flex items-center space-x-2 text-purple-300">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full" />
+                  <span className="text-sm">Automatize 90% das interações</span>
+                </div>
+                <div className="flex items-center space-x-2 text-purple-300">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full" />
+                  <span className="text-sm">Sua própria voz clonada</span>
+                </div>
+                <div className="flex items-center space-x-2 text-purple-300">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full" />
+                  <span className="text-sm">CRM adaptável</span>
+                </div>
+                <div className="flex items-center space-x-2 text-purple-300">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full" />
+                  <span className="text-sm">Agendamentos inteligentes</span>
+                </div>
+              </div>
+              
+              <GlowingButton 
+                href="https://wa.me/554731802324"
+                size="lg"
+              >
+                <Phone className="w-5 h-5" />
+                <span>Chamar no WhatsApp Agora</span>
+              </GlowingButton>
             </div>
           </div>
-          
-          <GlowingButton 
-            href="https://wa.me/554731802324"
-            size="lg"
-          >
-            <Phone className="w-5 h-5" />
-            <span>Chamar no WhatsApp Agora</span>
-          </GlowingButton>
-        </div>
+        </HeroEffects>
       </section>
 
       {/* 2. Inteligência Humanizada - MOVIDO PARA 2ª POSIÇÃO */}
