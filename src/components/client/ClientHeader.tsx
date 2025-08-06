@@ -14,7 +14,7 @@ import {
 import { clientsService, type ClientData } from '@/services/clientsService';
 import { EditProfileModal } from './EditProfileModal';
 import { ConfigureLogoModal } from './ConfigureLogoModal';
-import { cn } from '@/lib/utils';
+
 
 interface ClientHeaderProps {
   clientId?: string;
@@ -74,12 +74,11 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
             )}
             <Badge 
               variant={isConnected ? "default" : "secondary"}
-              className={cn(
-                "transition-all duration-200",
+              className={
                 isConnected 
-                  ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-200" 
-                  : "bg-red-100 text-red-800 border-red-200"
-              )}
+                  ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-200 transition-all duration-200" 
+                  : "bg-red-100 text-red-800 border-red-200 transition-all duration-200"
+              }
             >
               {isConnected ? "WhatsApp Conectado" : "Desconectado"}
             </Badge>
