@@ -113,58 +113,66 @@ function convertOggToWav(oggBytes: Uint8Array): Uint8Array {
 
 function processBase64Audio(base64String: string) {
   try {
-    console.log('🔄 PROCESSANDO áudio base64, tamanho:', base64String.length);
-    
+    console.log('🔄 PROCESSANDO áudio base64, tamanho:', base64String?.length || 0);
+
+    if (!base64String) {
+      throw new Error('Base64 ausente');
+    }
+
     // Remover possíveis prefixos de data URL
     let cleanBase64 = base64String;
-    if (base64String.includes(',')) {
-      cleanBase64 = base64String.split(',')[1];
+    const dataUrlMatch = /^data:.*?;base64,/.exec(cleanBase64);
+    if (dataUrlMatch) {
+      cleanBase64 = cleanBase64.slice(dataUrlMatch[0].length);
       console.log('✂️ Removido prefixo data URL');
     }
-    
+
     // Remover espaços e quebras de linha
     cleanBase64 = cleanBase64.replace(/\s/g, '');
-    
-    // Validar se é base64 válido
+
+    // Normalizar padding (múltiplos de 4)
+    const pad = cleanBase64.length % 4;
+    if (pad === 1) {
+      throw new Error('Base64 com padding inválido');
+    } else if (pad > 0) {
+      cleanBase64 = cleanBase64 + '='.repeat(4 - pad);
+    }
+
+    // Validar caracteres
     if (!/^[A-Za-z0-9+/=]*$/.test(cleanBase64)) {
       throw new Error('Base64 inválido detectado');
     }
-    
-    // Validar tamanho mínimo
-    if (cleanBase64.length < 10) {
-      throw new Error('Dados de áudio muito pequenos');
+
+    // Decodificar em chunks para evitar estouro e manter integridade
+    const chunkSize = 32768; // 32KB
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < cleanBase64.length; i += chunkSize) {
+      const chunk = cleanBase64.slice(i, i + chunkSize);
+      const bin = atob(chunk);
+      const bytes = new Uint8Array(bin.length);
+      for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+      chunks.push(bytes);
     }
-    
-    // Detectar formato do áudio
+
+    const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+    const bytes = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const c of chunks) {
+      bytes.set(c, offset);
+      offset += c.length;
+    }
+
+    if (bytes.length === 0) throw new Error('Dados decodificados estão vazios');
+
+    // Detectar formato (com a string limpa para manter logs anteriores)
     const audioInfo = detectAudioFormat(cleanBase64);
-    console.log('🎵 Formato de áudio detectado:', audioInfo);
-    
-    // Converter para binary com tratamento de erro
-    let binaryString: string;
-    try {
-      binaryString = atob(cleanBase64);
-    } catch (e) {
-      console.error('❌ Erro na decodificação base64:', e);
-      throw new Error('Falha na decodificação base64');
-    }
-    
-    if (binaryString.length === 0) {
-      throw new Error('Dados decodificados estão vazios');
-    }
-    
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
     console.log('✅ Áudio convertido para bytes:', bytes.length, 'bytes');
     console.log('🔍 Primeiros 16 bytes:', Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-    
+
     return { bytes, audioInfo };
-    
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ ERRO ao processar base64:', error);
-    throw new Error(`Erro no processamento do áudio: ${error.message}`);
+    throw new Error(`Erro no processamento do áudio: ${error.message || String(error)}`);
   }
 }
 
@@ -312,7 +320,8 @@ serve(async (req) => {
         // Criar FormData para OpenAI Whisper com os bytes originais (sem conversões artificiais)
         const formData = new FormData();
         const audioBlob = new Blob([audioBytes], { type: mimeType });
-        const fileName = `audio.${format}`;
+        const fileExt = format === 'ogg' ? 'oga' : format;
+        const fileName = `audio.${fileExt}`;
 
         formData.append('file', audioBlob, fileName);
         formData.append('model', 'whisper-1');
