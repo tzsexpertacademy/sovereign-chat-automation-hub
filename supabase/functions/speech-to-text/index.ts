@@ -1,10 +1,17 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient as createSupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY');
+const supabase = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+  ? createSupabaseClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  : null;
 
 // Detectar formato de áudio pelos headers dos bytes
 function detectAudioFormat(base64Data: string): { format: string; mimeType: string; needsConversion: boolean } {
@@ -188,11 +195,13 @@ serve(async (req) => {
     
     const body = await req.json();
     const { audio, audioUrl, openaiApiKey, messageId } = body;
+
+    const effectiveOpenAiKey = openaiApiKey || Deno.env.get('OPENAI_API_KEY');
     
     console.log('📊 Dados recebidos na edge function:', {
       hasAudio: !!audio,
       hasAudioUrl: !!audioUrl,
-      hasApiKey: !!openaiApiKey,
+      hasApiKey: !!effectiveOpenAiKey,
       audioLength: audio?.length || 0,
       audioPrefixPreview: audio?.substring(0, 50) || 'N/A',
       audioUrl: audioUrl?.substring(0, 100) || 'N/A',
@@ -201,24 +210,24 @@ serve(async (req) => {
     });
     
     console.log('🔑 API Key validation:', {
-      hasApiKey: !!openaiApiKey,
-      keyLength: openaiApiKey?.length || 0,
-      keyPrefix: openaiApiKey?.substring(0, 10) || 'N/A'
+      hasApiKey: !!effectiveOpenAiKey,
+      keyLength: effectiveOpenAiKey?.length || 0,
+      keyPrefix: effectiveOpenAiKey?.substring(0, 10) || 'N/A'
     });
     
-    if ((!audio && !audioUrl) || !openaiApiKey) {
+    if ((!audio && !audioUrl) || !effectiveOpenAiKey) {
       const errorMsg = 'Áudio (base64 ou URL) e chave da API OpenAI são obrigatórios';
       console.error('❌ VALIDAÇÃO FALHOU:', {
         hasAudio: !!audio,
         hasAudioUrl: !!audioUrl,
-        hasApiKey: !!openaiApiKey,
+        hasApiKey: !!effectiveOpenAiKey,
         errorMsg
       });
       
       return new Response(
         JSON.stringify({ 
           error: errorMsg,
-          details: 'Parâmetros obrigatórios em falta',
+          details: 'Parâmetros obrigatórios em falta (configure OPENAI_API_KEY nas Secrets da Function ou envie openaiApiKey no body)',
           success: false
         }),
         {
@@ -348,7 +357,7 @@ serve(async (req) => {
         const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
+            'Authorization': `Bearer ${effectiveOpenAiKey}`,
           },
           body: formData,
           signal: controller.signal
@@ -467,7 +476,25 @@ serve(async (req) => {
             }
           }
 
-          // ✅ TRANSCRIÇÃO VÁLIDA - Retornar resultado
+          // ✅ TRANSCRIÇÃO VÁLIDA - salvar no banco (se possível) e retornar
+          if (supabase && messageId && transcriptionText) {
+            try {
+              const updatePayload: Record<string, any> = { media_transcription: transcriptionText };
+              if (result.duration) updatePayload.media_duration = Math.round(result.duration);
+              const { error: updateError } = await supabase
+                .from('ticket_messages')
+                .update(updatePayload)
+                .eq('message_id', messageId);
+              if (updateError) {
+                console.error('❌ Erro ao salvar transcrição no DB:', updateError);
+              } else {
+                console.log('✅ Transcrição salva no DB para message_id:', messageId);
+              }
+            } catch (e) {
+              console.error('❌ Exceção ao salvar transcrição no DB:', e);
+            }
+          }
+
           console.log('🎉 SUCESSO COMPLETO - retornando transcrição válida');
           return new Response(
             JSON.stringify({
