@@ -309,7 +309,7 @@ async function processMessage(webhookData: any) {
       try {
         // Heurística simples de janela: 4s texto, 10s mídia
         const hasMedia = ['audio','image','video','document'].includes(messageType);
-        const timeoutSec = hasMedia ? 10 : 4;
+        const timeoutSec = hasMedia ? 10 : 0;
         const debounceUntil = new Date(Date.now() + timeoutSec * 1000).toISOString();
 
         // Upsert do estado de debounce por ticket
