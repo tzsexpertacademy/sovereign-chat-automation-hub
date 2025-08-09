@@ -209,56 +209,43 @@ async function processMessage(webhookData: any) {
       }
     }
 
-    // 6. PROCESSAR IA IMEDIATAMENTE (apenas para mensagens recebidas)
+    // 6. AGENDAR IA VIA DEBOUNCE (apenas para mensagens recebidas)
     if (!fromMe && ticketId) {
-      console.log('🤖 [AI] Iniciando processamento IA...');
-      
-      // Buscar assistente do ticket/fila
-      const { data: ticket } = await supabase
-        .from('conversation_tickets')
-        .select('assigned_assistant_id, assigned_queue_id')
-        .eq('id', ticketId)
-        .single();
+      try {
+        // Heurística simples de janela: 4s texto, 10s mídia
+        const hasMedia = ['audio','image','video','document'].includes(messageType);
+        const timeoutSec = hasMedia ? 10 : 4;
+        const debounceUntil = new Date(Date.now() + timeoutSec * 1000).toISOString();
 
-      let assistantId = ticket?.assigned_assistant_id;
-      
-      // Se não tem assistente no ticket, buscar da fila
-      if (!assistantId && ticket?.assigned_queue_id) {
-        const { data: queue } = await supabase
-          .from('queues')
-          .select('assistant_id')
-          .eq('id', ticket.assigned_queue_id)
-          .single();
-        
-        assistantId = queue?.assistant_id;
-      }
+        // Upsert do estado de debounce por ticket
+        const { error: upsertErr } = await supabase
+          .from('assistant_debounce')
+          .upsert({
+            ticket_id: ticketId,
+            client_id: clientId,
+            instance_id: instanceId,
+            chat_id: chatId,
+            debounce_until: debounceUntil,
+            scheduled: true,
+            last_updated: new Date().toISOString()
+          }, { onConflict: 'ticket_id' });
 
-      if (assistantId) {
-        console.log('🤖 [AI] Assistente encontrado:', assistantId);
-        
-        // Chamar processamento IA
-        const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
-          body: {
-            chatId,
-            instanceId,
-            clientId,
-            content,
-            messageId,
-            timestamp: Date.now(),
-            fromMe: false,
-            pushName: senderName,
-            assistantId,
-            ticketId
-          }
+        if (upsertErr) {
+          console.error('❌ [DEBOUNCE] Erro no upsert assistant_debounce:', upsertErr);
+        }
+
+        // Disparar processador imediato (idempotente)
+        const resp = await supabase.functions.invoke('immediate-batch-processor', {
+          body: { ticketId }
         });
 
-        if (aiResponse.error) {
-          console.error('❌ [AI] Erro no processamento:', aiResponse.error);
+        if (resp.error) {
+          console.error('❌ [DEBOUNCE] Erro ao invocar immediate-batch-processor:', resp.error);
         } else {
-          console.log('✅ [AI] Processamento iniciado');
+          console.log('✅ [DEBOUNCE] immediate-batch-processor acionado');
         }
-      } else {
-        console.log('⚠️ [AI] Nenhum assistente configurado');
+      } catch (e) {
+        console.error('❌ [DEBOUNCE] Falha ao agendar processamento:', e);
       }
     }
 

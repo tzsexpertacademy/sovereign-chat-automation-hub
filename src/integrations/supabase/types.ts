@@ -107,6 +107,42 @@ export type Database = {
           },
         ]
       }
+      assistant_debounce: {
+        Row: {
+          chat_id: string
+          client_id: string
+          created_at: string
+          debounce_until: string
+          instance_id: string
+          last_updated: string
+          lock_version: number
+          scheduled: boolean
+          ticket_id: string
+        }
+        Insert: {
+          chat_id: string
+          client_id: string
+          created_at?: string
+          debounce_until: string
+          instance_id: string
+          last_updated?: string
+          lock_version?: number
+          scheduled?: boolean
+          ticket_id: string
+        }
+        Update: {
+          chat_id?: string
+          client_id?: string
+          created_at?: string
+          debounce_until?: string
+          instance_id?: string
+          last_updated?: string
+          lock_version?: number
+          scheduled?: boolean
+          ticket_id?: string
+        }
+        Relationships: []
+      }
       assistant_video_library: {
         Row: {
           assistant_id: string
