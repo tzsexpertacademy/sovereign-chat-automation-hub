@@ -367,11 +367,10 @@ Deno.serve(async (req) => {
             const transcription = await transcribeAudio(base64String, ticketData.client_id, supabase)
             
             if (transcription) {
-              // Atualizar modelo da própria mensagem: conteúdo textual = transcrição
-              updateData.content = transcription
+              // Salvar transcrição sem marcar a mensagem como processada (debounce cuidará da resposta)
               updateData.media_transcription = transcription
               updateData.processing_status = 'transcribed'
-              console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida (conteúdo atualizado)')
+              console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida')
 
               // Atualizar somente a transcrição na whatsapp_messages (não alterar body/is_processed)
               await supabase
@@ -380,38 +379,6 @@ Deno.serve(async (req) => {
                   media_transcription: transcription
                 })
                 .eq('message_id', message.message_id)
-
-              // Atualizar preview do ticket
-              try {
-                await supabase
-                  .from('conversation_tickets')
-                  .update({
-                    last_message_preview: transcription,
-                    last_message_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', message.ticket_id)
-              } catch (e) {
-                console.error('⚠️ [POST-TRANSCRIPTION] Falha ao atualizar ticket preview:', e)
-              }
-
-              // Reprogramar debounce para garantir resposta após transcrição
-              try {
-                const debounceUntil = new Date(Date.now() + 4000).toISOString()
-                await supabase
-                  .from('assistant_debounce')
-                  .upsert({
-                    ticket_id: message.ticket_id,
-                    client_id: ticketData.client_id,
-                    instance_id: ticketData.instance_id,
-                    chat_id: (await supabase.from('whatsapp_messages').select('chat_id').eq('message_id', message.message_id).maybeSingle()).data?.chat_id || null,
-                    debounce_until: debounceUntil,
-                    scheduled: true,
-                    last_updated: new Date().toISOString()
-                  }, { onConflict: 'ticket_id' })
-              } catch (e) {
-                console.error('⚠️ [POST-TRANSCRIPTION] Falha no upsert assistant_debounce:', e)
-              }
 
               // Disparar (ou reforçar) processador imediato para este ticket
               try {
