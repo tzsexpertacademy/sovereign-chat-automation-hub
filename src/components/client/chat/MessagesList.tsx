@@ -62,7 +62,7 @@ const MessagesList = memo(({
   // Memoizar função de renderização para melhor performance
   const renderMessageContent = useMemo(() => (message: any) => {
   // Renderizar áudio
-    if (message.message_type === 'audio') {
+    if (message.message_type === 'audio' || message.message_type === 'ptt') {
       const adaptedData = adaptMessageMedia(message);
       
       // Log removido para performance
