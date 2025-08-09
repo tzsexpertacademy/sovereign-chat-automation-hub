@@ -31,7 +31,7 @@ serve(async (req) => {
     // Seleciona batches pendentes
     let query = supabase
       .from("message_batches")
-      .select("id, chat_id, client_id, instance_id, messages, created_at, last_updated, processing_started_at, processing_by")
+      .select("id, chat_id, client_id, instance_id, messages, created_at, processing_started_at")
       .is("processed_at", null)
       .order("created_at", { ascending: true })
       .limit(limit);
@@ -58,7 +58,7 @@ serve(async (req) => {
       // Tentar adquirir lock (processing_started_at ainda null)
       const { data: lockRow, error: lockErr } = await supabase
         .from("message_batches")
-        .update({ processing_started_at: nowIso, processing_by: "scheduler" })
+        .update({ processing_started_at: nowIso, status: "processing" })
         .eq("id", batch.id)
         .is("processing_started_at", null)
         .select("id")
@@ -92,7 +92,7 @@ serve(async (req) => {
         // Ainda assim marcar como processado para evitar loop infinito
         await supabase
           .from("message_batches")
-          .update({ processed_at: nowIso, last_updated: nowIso })
+          .update({ processed_at: nowIso, status: "skipped" })
           .eq("id", batch.id);
         continue;
       }
@@ -124,7 +124,7 @@ serve(async (req) => {
       // Marcar batch como processado e atualizado
       await supabase
         .from("message_batches")
-        .update({ processed_at: nowIso, last_updated: nowIso })
+        .update({ processed_at: nowIso, status: "scheduled" })
         .eq("id", batch.id);
 
       // Disparar worker de execução imediata para este ticket (ele respeitará a janela e lock)
