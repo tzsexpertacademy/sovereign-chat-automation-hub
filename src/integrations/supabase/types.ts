@@ -1370,6 +1370,45 @@ export type Database = {
         }
         Relationships: []
       }
+      message_batches: {
+        Row: {
+          chat_id: string
+          client_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          instance_id: string
+          messages: Json
+          processed_at: string | null
+          processing_started_at: string | null
+          status: string
+        }
+        Insert: {
+          chat_id: string
+          client_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          instance_id: string
+          messages: Json
+          processed_at?: string | null
+          processing_started_at?: string | null
+          status?: string
+        }
+        Update: {
+          chat_id?: string
+          client_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          instance_id?: string
+          messages?: Json
+          processed_at?: string | null
+          processing_started_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       personalization_comments: {
         Row: {
           attachments: Json | null
