@@ -152,11 +152,11 @@ Deno.serve(async (req) => {
       const { data: qData, error: queryError } = await supabase
         .from('ticket_messages')
         .select('*')
-        .in('message_type', ['audio', 'image', 'video', 'document'])
+        .in('message_type', ['audio', 'ptt', 'image', 'video', 'document'])
         .not('media_key', 'is', null)
         .not('media_url', 'is', null)
         .eq('processing_status', 'received')
-        .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
+        .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.ptt,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
         .order('created_at', { ascending: true })
         .limit(5)
 
@@ -192,6 +192,7 @@ Deno.serve(async (req) => {
           switch (message.message_type) {
             case 'image': return !message.image_base64
             case 'audio': return !message.audio_base64
+            case 'ptt': return !message.audio_base64
             case 'video': return !message.video_base64
             case 'document': return !message.document_base64
             default: return false
@@ -280,7 +281,7 @@ Deno.serve(async (req) => {
         const directPath = message.direct_path || (message.media_url ? new URL(message.media_url).pathname + (new URL(message.media_url).search || '') : null)
 
         const downloadRequest = {
-          contentType: message.message_type,
+          contentType: message.message_type === 'ptt' ? 'audio' : message.message_type,
           content: {
             url: message.media_url,
             mediaKey: mediaKeyBase64,
@@ -344,6 +345,7 @@ Deno.serve(async (req) => {
 
         switch (message.message_type) {
           case 'audio':
+          case 'ptt':
             updateData.audio_base64 = base64String
             break
           case 'image':
@@ -358,7 +360,7 @@ Deno.serve(async (req) => {
         }
 
         // Para áudios, tentar transcrição automática e atualizar content
-        if (message.message_type === 'audio') {
+        if (message.message_type === 'audio' || message.message_type === 'ptt') {
           console.log('🎙️ [AUTO-TRANSCRIBE] Processando áudio para transcrição...')
           
           // Usar o ticketData já obtido anteriormente
@@ -496,6 +498,7 @@ Deno.serve(async (req) => {
 function getDefaultMimeType(messageType: string): string {
   switch (messageType) {
     case 'audio': return 'audio/ogg; codecs=opus'
+    case 'ptt': return 'audio/ogg; codecs=opus'
     case 'image': return 'image/jpeg'
     case 'video': return 'video/mp4'
     case 'document': return 'application/octet-stream'
