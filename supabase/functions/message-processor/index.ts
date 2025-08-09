@@ -252,6 +252,19 @@ async function processMessage(webhookData: any) {
               console.error('❌ [FALLBACK] Erro ao criar batch imediato:', batchResp.error);
             } else {
               console.log('✅ [FALLBACK] Batch imediato criado:', batchResp.data);
+              // Acionar processamento em blocos para agregar múltiplas mensagens do chat
+              try {
+                const batchProc = await supabase.functions.invoke('process-message-batches', {
+                  body: { trigger: 'webhook', limit: 10, debounceWindowSec: 10 }
+                });
+                if (batchProc.error) {
+                  console.error('❌ [BATCH] Erro ao invocar process-message-batches:', batchProc.error);
+                } else {
+                  console.log('✅ [BATCH] process-message-batches acionado:', batchProc.data);
+                }
+              } catch (batchErr) {
+                console.error('❌ [BATCH] Falha ao acionar processamento em blocos:', batchErr);
+              }
             }
 
             // 2) Registrar artifact de texto (idempotente)
