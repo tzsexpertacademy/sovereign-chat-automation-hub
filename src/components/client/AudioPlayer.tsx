@@ -112,7 +112,7 @@ const AudioPlayer = ({
     mediaUrl: audioUrl,
     mediaKey,
     fileEncSha256,
-    mimetype: 'audio/ogg',
+    mimetype: 'audio/ogg; codecs=opus',
     contentType: 'audio',
     audioBase64: audioData
   });

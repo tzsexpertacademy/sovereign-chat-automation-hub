@@ -277,55 +277,27 @@ serve(async (req) => {
       primeiros10Bytes: Array.from(audioBytes.slice(0, 10)).map(b => b.toString(16)).join(' ')
     });
 
-    // CONVERSÃO DE ÁUDIO SE NECESSÁRIO
-    let convertedAudioBytes = audioBytes;
-    let finalAudioInfo = audioInfo;
+    // DEFINIÇÃO DE FORMATO E ORDEM DE TENTATIVAS (sem conversões artificiais)
+    const formatsToTry: Array<{ format: string; mimeType: string }> = [];
 
-    if (audioInfo.needsConversion && audioInfo.format === 'ogg') {
-      console.log('🔄 OGG detectado - aplicando conversão para WAV...');
-      try {
-        convertedAudioBytes = convertOggToWav(audioBytes);
-        finalAudioInfo = { format: 'wav', mimeType: 'audio/wav', needsConversion: false };
-        console.log('✅ Conversão OGG→WAV concluída:', convertedAudioBytes.length, 'bytes');
-      } catch (conversionError) {
-        console.warn('⚠️ Conversão falhou, tentando OGG original:', conversionError.message);
-        convertedAudioBytes = audioBytes; // Manter original
-      }
+    // Priorizar formato detectado quando disponível
+    if (audioInfo?.format) {
+      if (audioInfo.format === 'ogg') formatsToTry.push({ format: 'ogg', mimeType: 'audio/ogg' });
+      if (audioInfo.format === 'webm') formatsToTry.push({ format: 'webm', mimeType: 'audio/webm' });
+      if (audioInfo.format === 'mp3') formatsToTry.push({ format: 'mp3', mimeType: 'audio/mpeg' });
+      if (audioInfo.format === 'wav') formatsToTry.push({ format: 'wav', mimeType: 'audio/wav' });
     }
 
-    // FORMATOS OTIMIZADOS PARA OPENAI WHISPER (prioridade correta)
-    const formatsToTry = [];
-
-    // Se temos um formato direto (WAV/MP3), começar com ele
-    if (!finalAudioInfo.needsConversion) {
-      if (finalAudioInfo.format === 'wav') {
-        formatsToTry.push({ format: 'wav', mimeType: 'audio/wav' });
-      } else if (finalAudioInfo.format === 'mp3') {
-        formatsToTry.push({ format: 'mp3', mimeType: 'audio/mpeg' });
-      } else if (finalAudioInfo.format === 'webm') {
-        formatsToTry.push({ format: 'webm', mimeType: 'audio/webm' });
-      }
-    }
-
-    // Adicionar formatos universais de fallback
+    // Fallbacks universais (evitar duplicatas depois)
     formatsToTry.push(
-      { format: 'wav', mimeType: 'audio/wav' },
-      { format: 'mp3', mimeType: 'audio/mpeg' },
+      { format: 'ogg', mimeType: 'audio/ogg' },
       { format: 'webm', mimeType: 'audio/webm' },
-      { format: 'ogg', mimeType: 'audio/ogg' }
+      { format: 'mp3', mimeType: 'audio/mpeg' },
+      { format: 'wav', mimeType: 'audio/wav' }
     );
 
-    // Remover duplicatas
-    const uniqueFormats = formatsToTry.filter((format, index, self) => 
-      index === self.findIndex(f => f.format === format.format && f.mimeType === format.mimeType)
-    );
 
     console.log('🎯 Formatos a tentar:', uniqueFormats.map(f => f.format).join(' → '));
-
-    for (let i = 0; i < uniqueFormats.length; i++) {
-      const { format, mimeType } = uniqueFormats[i];
-      
-      try {
         console.log(`🚀 TENTATIVA ${i + 1}/${uniqueFormats.length}: Enviando para OpenAI Whisper como ${format}...`);
 
         // Usar dados convertidos se disponível
@@ -333,7 +305,7 @@ serve(async (req) => {
 
         // Criar FormData para OpenAI Whisper
         const formData = new FormData();
-        const audioBlob = new Blob([bytesToUse], { type: mimeType });
+        const audioBlob = new Blob([audioBytes], { type: mimeType });
         const fileName = `audio.${format}`;
         
         formData.append('file', audioBlob, fileName);
@@ -348,7 +320,7 @@ serve(async (req) => {
           blobSize: audioBlob.size,
           tentativa: i + 1,
           totalTentativas: uniqueFormats.length,
-          audioConvertido: finalAudioInfo.format === 'wav',
+          audioConvertido: false,
           formatoOriginal: audioInfo.format
         });
 
