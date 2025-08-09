@@ -92,7 +92,7 @@ export const webhookConfigService = {
       if (response.success && response.data) {
         const isCorrectlyConfigured = 
           response.data.enabled === true &&
-          (response.data.url.includes('yumer-unified-webhook') || response.data.url.includes('yumer-webhook')) &&
+          (response.data.url.includes('message-processor') || response.data.url.includes('yumer-unified-webhook') || response.data.url.includes('yumer-webhook')) &&
           response.data.events?.messagesUpsert === true;
         
         console.log(`📊 [WEBHOOK-VERIFY] Status: ${isCorrectlyConfigured ? 'Configurado' : 'Incorreto'}`);

@@ -156,7 +156,7 @@ class ServerConfigService {
         },
         messageWebhook: {
           enabled: true,
-          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/message-processor',
           events: ['messagesUpsert', 'sendMessage', 'messages.upsert'],
           authentication: 'bearer',
           secret: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI'

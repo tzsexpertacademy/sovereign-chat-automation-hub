@@ -649,7 +649,7 @@ class UnifiedYumerService {
     console.log(`🔧 [WEBHOOK] Configurando webhook para: ${instanceId}`);
     
     // URL do webhook correta
-    const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook';
+    const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/message-processor';
     
     try {
       // Primeiro, verificar se já existe um webhook
@@ -710,13 +710,7 @@ class UnifiedYumerService {
         const eventsResult = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook/${webhookId}/events`, {
           method: 'PATCH',
           body: JSON.stringify({
-            messagesUpsert: true,
-            connectionUpdate: true,
-            qrcodeUpdate: true,
-            chatsUpsert: true,
-            contactsUpsert: true,
-            messagesUpdate: true,
-            presenceUpdate: true
+            messagesUpsert: true
           })
         }, true, false);
 

@@ -56,7 +56,7 @@ export const environment = {
     },
     messageWebhook: {
       enabled: true,
-      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/message-processor',
       name: 'Message Processing',
       events: ['messagesUpsert', 'sendMessage', 'messages.upsert']
     },

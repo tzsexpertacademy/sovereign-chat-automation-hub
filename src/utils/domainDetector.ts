@@ -105,10 +105,10 @@ export class DomainDetector {
   /**
    * Obtém URL de webhook correta baseada no domínio atual
    */
-  getCorrectWebhookUrl(): string {
-    const baseUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1';
-    return `${baseUrl}/yumer-webhook`;
-  }
+   getCorrectWebhookUrl(): string {
+     const baseUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1';
+     return `${baseUrl}/message-processor`;
+   }
 
   /**
    * Valida se uma origem está na lista de CORS permitidas
