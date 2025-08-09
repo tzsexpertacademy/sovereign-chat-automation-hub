@@ -349,6 +349,77 @@ serve(async (req) => {
       });
     }
 
+    // 🧠 DEBOUNCE/AGREGAÇÃO: agrupar mensagens do cliente por janela silenciosa
+    const chatIdForDebounce = resolvedContext?.chatId;
+    const assistantSettings: any = (resolvedAssistant && (resolvedAssistant as any).advanced_settings) || {};
+    const batchWindowSec: number = Math.max(1, Math.min(assistantSettings?.message_batch_timeout_seconds ?? 4, 30));
+    const maxWaitMs = Math.max(batchWindowSec * 1000, 4000) + 4000; // hard cap de segurança
+
+    if (chatIdForDebounce) {
+      console.log('⏱️ [DEBOUNCE] Iniciando janela silenciosa:', { chatId: chatIdForDebounce, batchWindowSec });
+      let waitedMs = 0;
+      while (true) {
+        const { data: latestRows } = await supabase
+          .from('whatsapp_messages')
+          .select('timestamp')
+          .eq('chat_id', chatIdForDebounce)
+          .eq('from_me', false)
+          .eq('is_processed', false)
+          .order('timestamp', { ascending: false })
+          .limit(1);
+        const latestTs = latestRows && latestRows.length > 0 ? new Date(latestRows[0].timestamp as any).getTime() : null;
+        if (!latestTs) {
+          console.log('⏱️ [DEBOUNCE] Nenhuma mensagem pendente para agregar.');
+          break;
+        }
+        const sinceMs = Date.now() - latestTs;
+        const remainingMs = batchWindowSec * 1000 - sinceMs;
+        if (remainingMs <= 0) {
+          console.log('⏱️ [DEBOUNCE] Janela silenciosa atingida.');
+          break;
+        }
+        const sleepMs = Math.min(remainingMs, 1500);
+        console.log(`⏱️ [DEBOUNCE] Aguardando ${sleepMs}ms (faltam ${remainingMs}ms)`);
+        await new Promise((r) => setTimeout(r, sleepMs));
+        waitedMs += sleepMs;
+        if (waitedMs >= maxWaitMs) {
+          console.log('⏱️ [DEBOUNCE] Tempo máximo de espera atingido, seguindo.');
+          break;
+        }
+      }
+
+      // Buscar todas as mensagens não processadas do usuário após a janela silenciosa
+      const { data: pending } = await supabase
+        .from('whatsapp_messages')
+        .select('message_id, body, message_type')
+        .eq('chat_id', chatIdForDebounce)
+        .eq('from_me', false)
+        .eq('is_processed', false)
+        .order('timestamp', { ascending: true });
+
+      if (pending && pending.length > 0) {
+        messages = pending.map((m: any) => ({
+          messageId: m.message_id,
+          content: m.body || '',
+          messageType: m.message_type || 'text',
+        }));
+        console.log('📦 [DEBOUNCE] Mensagens agregadas para processamento:', { count: messages.length, windowSec: batchWindowSec });
+      } else {
+        // Se não há pendências, é provável que outra execução já tenha processado
+        console.log('✅ [DEBOUNCE] Sem pendências após janela silenciosa — pulando processamento.');
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: 'NO_PENDING_MESSAGES_AFTER_DEBOUNCE',
+          ticketId,
+          chatId: chatIdForDebounce,
+          timestamp: new Date().toISOString(),
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    } else {
+      console.warn('⚠️ [DEBOUNCE] chatId ausente — prosseguindo sem agregação');
+    }
+
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
     const isBatch = Array.isArray(messages) && messages.length > 0;
 
