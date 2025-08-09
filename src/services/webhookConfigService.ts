@@ -31,7 +31,7 @@ export const webhookConfigService = {
     try {
       console.log(`🔧 [WEBHOOK-CONFIG] Configurando webhook para instância: ${instanceId}`);
       
-      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-unified-webhook';
+      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/message-processor';
       
       const webhookConfig: WebhookConfig = {
         enabled: true,
@@ -90,10 +90,11 @@ export const webhookConfigService = {
       const response = await yumerWhatsappService.getWebhookConfig(instanceId);
       
       if (response.success && response.data) {
+        const events = (response.data as any).WebhookEvents || (response.data as any).events;
         const isCorrectlyConfigured = 
           response.data.enabled === true &&
-          (response.data.url.includes('message-processor') || response.data.url.includes('yumer-unified-webhook') || response.data.url.includes('yumer-webhook')) &&
-          response.data.events?.messagesUpsert === true;
+          (response.data.url?.includes('message-processor') || response.data.url?.includes('yumer-unified-webhook') || response.data.url?.includes('yumer-webhook')) &&
+          events?.messagesUpsert === true;
         
         console.log(`📊 [WEBHOOK-VERIFY] Status: ${isCorrectlyConfigured ? 'Configurado' : 'Incorreto'}`);
         
