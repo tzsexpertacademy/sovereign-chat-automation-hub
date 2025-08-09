@@ -338,24 +338,27 @@ Deno.serve(async (req) => {
         const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
         console.log(`✅ [MEDIA-DECRYPT] Base64 created: ${base64String.length} chars`)
 
-        // Salvar dados base64 na coluna apropriada
+        // Salvar dados base64 na coluna apropriada (sempre com data URL + mimetype)
         const updateData: any = {
           processing_status: 'processing'
         }
 
+        const mimeType = message.media_mime_type || getDefaultMimeType(message.message_type)
+        const dataUrl = `data:${mimeType};base64,${base64String}`
+
         switch (message.message_type) {
           case 'audio':
           case 'ptt':
-            updateData.audio_base64 = base64String
+            updateData.audio_base64 = dataUrl
             break
           case 'image':
-            updateData.image_base64 = base64String
+            updateData.image_base64 = dataUrl
             break
           case 'video':
-            updateData.video_base64 = base64String
+            updateData.video_base64 = dataUrl
             break
           case 'document':
-            updateData.document_base64 = base64String
+            updateData.document_base64 = dataUrl
             break
         }
 
