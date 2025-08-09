@@ -282,6 +282,9 @@ async function processMessage(webhookData: any) {
             const aiResp = await supabase.functions.invoke('ai-assistant-process', {
               body: { 
                 ticketId,
+                clientId,
+                instanceId,
+                chatId,
                 messages: [{
                   content,
                   messageId,
