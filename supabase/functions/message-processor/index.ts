@@ -139,7 +139,7 @@ async function processMessage(webhookData: any) {
         from_me: fromMe,
         body: content,
         message_type: messageType,
-        sender_name: senderName,
+        sender: senderName,
         timestamp,
         media_key: mediaData?.mediaKey,
         media_url: mediaData?.url,
