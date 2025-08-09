@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUnifiedMedia } from '@/hooks/useUnifiedMedia';
-import { supabase } from '@/integrations/supabase/client';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -32,7 +31,6 @@ const AudioPlayer = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const invokedProcessRef = useRef(false);
 
   // 🔧 DEBUG: Log inicial dos dados recebidos
   console.log('🎵 AudioPlayer DEBUG - Props recebidas:', {
@@ -171,18 +169,6 @@ const AudioPlayer = ({
     };
   }, [finalDisplayUrl]);
 
-  // Gatilho proativo: garantir descriptografia/transcrição no backend
-  useEffect(() => {
-    if (invokedProcessRef.current) return;
-    if (messageId && mediaKey && !audioData) {
-      invokedProcessRef.current = true;
-      console.log('🚀 AudioPlayer: invocando process-received-media para', messageId);
-      supabase.functions.invoke('process-received-media', { body: { messageId } })
-        .then((res) => console.log('✅ process-received-media invocado', res.data || res.error))
-        .catch((err) => console.error('❌ Falha ao invocar process-received-media:', err));
-    }
-  }, [messageId, mediaKey, audioData]);
-
   const togglePlay = async () => {
     if (!audioRef.current || (!finalDisplayUrl && !error)) return;
 
@@ -269,13 +255,9 @@ const AudioPlayer = ({
     <div className="flex items-center space-x-3 bg-muted/30 p-3 rounded-lg border">
       <audio 
         ref={audioRef}
+        src={finalDisplayUrl || undefined}
         preload="metadata"
-        crossOrigin="anonymous"
-      >
-        {finalDisplayUrl && (
-          <source src={finalDisplayUrl} type="audio/ogg" />
-        )}
-      </audio>
+      />
       
       <Button
         variant="ghost"
