@@ -2457,6 +2457,17 @@ export type Database = {
           workload_score: number
         }[]
       }
+      manage_message_batch_immediate: {
+        Args:
+          | {
+              p_chat_id: string
+              p_client_id: string
+              p_instance_id: string
+              p_message: Json
+            }
+          | { p_payload: Json }
+        Returns: string
+      }
       monitor_message_health: {
         Args: Record<PropertyKey, never>
         Returns: Json
