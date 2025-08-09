@@ -184,7 +184,27 @@ async function processMessage(webhookData: any) {
 
     console.log('📝 [PROCESS] Mensagem extraída:', { content, messageType, fromMe });
 
-    // 3. SALVAR MENSAGEM NO BANCO (whatsapp_messages)
+    // 3. GUARDA DE IDEMPOTÊNCIA (evitar duplas inserções e respostas)
+    const { data: existingTicketMessage } = await supabase
+      .from('ticket_messages')
+      .select('id,ticket_id')
+      .eq('message_id', messageId)
+      .maybeSingle();
+
+    if (existingTicketMessage) {
+      console.log('🔁 [IDEMPOTENCY] Mensagem já processada, ignorando duplicata:', messageId);
+      return new Response(JSON.stringify({
+        success: true,
+        messageId,
+        ticketId: existingTicketMessage.ticket_id,
+        processed: true,
+        deduped: true
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 4. SALVAR MENSAGEM NO BANCO (whatsapp_messages)
     const { error: messageError } = await supabase
       .from('whatsapp_messages')
       .insert({
@@ -235,25 +255,27 @@ async function processMessage(webhookData: any) {
 
     // 5. SALVAR MENSAGEM NO TICKET
     if (ticketId) {
+      const insertPayload = {
+        ticket_id: ticketId,
+        message_id: messageId,
+        content,
+        message_type: messageType,
+        from_me: fromMe,
+        timestamp,
+        sender_name: senderName,
+        media_url: mediaData?.url,
+        media_duration: mediaData?.seconds,
+        media_key: mediaData?.mediaKey,
+        file_enc_sha256: mediaData?.fileEncSha256,
+        file_sha256: mediaData?.fileSha256,
+        media_mime_type: mediaData?.mimetype,
+        direct_path: mediaData?.directPath,
+        processing_status: 'received'
+      };
+
       const { error: ticketMessageError } = await supabase
         .from('ticket_messages')
-        .insert({
-          ticket_id: ticketId,
-          message_id: messageId,
-          content,
-          message_type: messageType,
-          from_me: fromMe,
-          timestamp,
-          sender_name: senderName,
-          media_url: mediaData?.url,
-          media_duration: mediaData?.seconds,
-          media_key: mediaData?.mediaKey,
-          file_enc_sha256: mediaData?.fileEncSha256,
-          file_sha256: mediaData?.fileSha256,
-          media_mime_type: mediaData?.mimetype,
-          direct_path: mediaData?.directPath,
-          processing_status: 'received'
-        });
+        .upsert(insertPayload, { onConflict: 'message_id', ignoreDuplicates: true });
 
       if (ticketMessageError) {
         console.error('❌ [PROCESS] Erro ao salvar no ticket:', ticketMessageError);
