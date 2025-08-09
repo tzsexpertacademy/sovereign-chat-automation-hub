@@ -101,10 +101,63 @@ async function processMessage(webhookData: any) {
     
     // Conteúdo da mensagem
     let content = '';
-    let messageType: 'text' | 'audio' | 'image' | 'video' | 'document' = 'text';
+    let messageType: 'text' | 'audio' | 'ptt' | 'image' | 'video' | 'document' = 'text';
     let mediaData: any = null;
 
-    if (messageData.message?.conversation) {
+    // Novo: detectar mídia no formato contentType/content (Yumer v2)
+    if (messageData.contentType && messageData.content) {
+      const ct = String(messageData.contentType).toLowerCase();
+      const c = messageData.content || {};
+      if (ct === 'audio') {
+        content = '🎵 Áudio';
+        messageType = c.ptt ? 'ptt' : 'audio';
+        mediaData = {
+          url: c.url,
+          mediaKey: c.mediaKey,
+          mimetype: c.mimetype,
+          fileEncSha256: c.fileEncSha256,
+          fileSha256: c.fileSha256,
+          directPath: c.directPath,
+          seconds: c.seconds,
+          fileLength: c.fileLength
+        };
+      } else if (ct === 'image') {
+        content = '📷 Imagem';
+        messageType = 'image';
+        mediaData = {
+          url: c.url,
+          mediaKey: c.mediaKey,
+          mimetype: c.mimetype,
+          fileEncSha256: c.fileEncSha256,
+          fileSha256: c.fileSha256,
+          directPath: c.directPath
+        };
+      } else if (ct === 'video') {
+        content = '📹 Vídeo';
+        messageType = 'video';
+        mediaData = {
+          url: c.url,
+          mediaKey: c.mediaKey,
+          mimetype: c.mimetype,
+          fileEncSha256: c.fileEncSha256,
+          fileSha256: c.fileSha256,
+          directPath: c.directPath
+        };
+      } else if (ct === 'document' || ct === 'sticker') {
+        content = `📄 Documento`;
+        messageType = 'document';
+        mediaData = {
+          url: c.url,
+          mediaKey: c.mediaKey,
+          mimetype: c.mimetype,
+          fileEncSha256: c.fileEncSha256,
+          fileSha256: c.fileSha256,
+          directPath: c.directPath
+        };
+      } else if (c.text) {
+        content = c.text;
+      }
+    } else if (messageData.message?.conversation) {
       content = messageData.message.conversation;
     } else if (messageData.message?.extendedTextMessage?.text) {
       content = messageData.message.extendedTextMessage.text;
@@ -208,7 +261,7 @@ async function processMessage(webhookData: any) {
         console.log('✅ [PROCESS] Mensagem salva no ticket');
         // Disparar processamento de mídia (descrifrar + transcrever) para áudio
         try {
-          if (messageType === 'audio' && mediaData) {
+          if ((messageType === 'audio' || messageType === 'ptt') && mediaData) {
             const resp = await supabase.functions.invoke('process-received-media', {
               body: {
                 messageId,
@@ -323,7 +376,7 @@ async function processMessage(webhookData: any) {
     if (!fromMe && ticketId) {
       try {
         // Heurística simples de janela: 4s texto, 10s mídia
-        const hasMedia = ['audio','image','video','document'].includes(messageType);
+        const hasMedia = ['audio','ptt','image','video','document'].includes(messageType);
         const timeoutSec = hasMedia ? 10 : 0;
         const debounceUntil = new Date(Date.now() + timeoutSec * 1000).toISOString();
 
