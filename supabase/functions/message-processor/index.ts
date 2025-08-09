@@ -233,7 +233,28 @@ async function processMessage(webhookData: any) {
         // Fallback agressivo: garantir resposta de texto imediata
         try {
           if (!fromMe && messageType === 'text' && ticketId) {
-            console.log('🚀 [FALLBACK] Acionando AI diretamente para garantir resposta');
+            console.log('🚀 [FALLBACK] Preparando batch imediato antes da IA');
+            // Criar batch imediato para garantir que a IA tenha conteúdo para processar
+            const payload = {
+              chat_id: chatId,
+              client_id: clientId,
+              instance_id: instanceId,
+              message: {
+                messageId,
+                chatId,
+                content,
+                fromMe: false,
+                timestamp: Math.floor((timestamp instanceof Date ? timestamp.getTime() : Date.now()) / 1000)
+              }
+            };
+            const batchResp = await supabase.rpc('manage_message_batch_immediate', { p_payload: payload });
+            if (batchResp.error) {
+              console.error('❌ [FALLBACK] Erro ao criar batch imediato:', batchResp.error);
+            } else {
+              console.log('✅ [FALLBACK] Batch imediato criado:', batchResp.data);
+            }
+
+            console.log('🤖 [FALLBACK] Acionando ai-assistant-process');
             const aiResp = await supabase.functions.invoke('ai-assistant-process', {
               body: { ticketId }
             });
@@ -244,7 +265,7 @@ async function processMessage(webhookData: any) {
             }
           }
         } catch (e) {
-          console.error('❌ [FALLBACK] Falha ao acionar AI direta:', e);
+          console.error('❌ [FALLBACK] Falha ao acionar IA direta:', e);
         }
       }
     }
