@@ -350,26 +350,37 @@ serve(async (req) => {
     }
 
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
-    const isBatch = messages && Array.isArray(messages) && messages.length > 0;
-    
+    const isBatch = Array.isArray(messages) && messages.length > 0;
+
+    // Normalização robusta do conteúdo para evitar 500 por body inconsistente
+    const fallbackSingleContent = (message ?? requestBody?.content ?? requestBody?.text ?? requestBody?.body ?? requestBody?.data?.content ?? '').toString();
+
     let messageContent: string;
     if (isBatch) {
       // Processar batch de mensagens
-      const messageTexts = messages.map(msg => msg.content).filter(Boolean);
-      messageContent = messageTexts.join(' ');
+      const messageTexts = messages
+        .map((msg: any) => msg?.content ?? msg?.text ?? msg?.body)
+        .filter((t: any) => typeof t === 'string' && t.trim().length > 0);
+      messageContent = messageTexts.join(' ').trim();
       console.log(`📦 [BATCH-IA] Processando batch de ${messages.length} mensagens: "${messageContent}"`);
     } else {
-      messageContent = message;
+      messageContent = fallbackSingleContent.trim();
       console.log(`📝 [SINGLE-IA] Processando mensagem única: "${messageContent}"`);
     }
 
     // ✅ VALIDAÇÃO CRÍTICA: Verificar se os dados essenciais estão presentes
     if (!ticketId) {
-      throw new Error('ticketId é obrigatório');
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'ticketId é obrigatório'
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    
-    if (!messageContent && !message && (!messages || messages.length === 0)) {
-      throw new Error('Nenhum conteúdo de mensagem fornecido');
+
+    if (!messageContent || messageContent.length === 0) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Nenhum conteúdo de mensagem fornecido'
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ========================= DIAGNÓSTICO COMPLETO =========================
