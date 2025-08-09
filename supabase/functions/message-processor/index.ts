@@ -280,7 +280,17 @@ async function processMessage(webhookData: any) {
             // 3) Acionar IA
             console.log('🤖 [FALLBACK] Acionando ai-assistant-process');
             const aiResp = await supabase.functions.invoke('ai-assistant-process', {
-              body: { ticketId }
+              body: { 
+                ticketId,
+                message: {
+                  messageId,
+                  content,
+                  fromMe: false,
+                  role: 'user',
+                  timestamp: (timestamp instanceof Date ? timestamp.toISOString() : new Date().toISOString()),
+                  senderName
+                }
+              }
             });
             if (aiResp.error) {
               console.error('❌ [FALLBACK] Erro ao invocar ai-assistant-process direto:', aiResp.error);
