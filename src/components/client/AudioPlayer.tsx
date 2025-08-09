@@ -84,14 +84,21 @@ const AudioPlayer = ({
 
     // Se já vier como data URL, usar como está (evita duplo prefixo)
     if (audioData.startsWith('data:')) {
-      const mimeMatch = audioData.slice(5, audioData.indexOf(',')) || '';
-      console.log('🎵 AudioPlayer DEBUG - Conversão base64:', {
-        formatDetectado: detectAudioFormat(audioData),
-        mimeType: mimeMatch.replace(';base64', '') || 'unknown',
-        dataUrlLength: audioData.length,
-        dataUrlPreview: audioData.substring(0, 100) + '...'
+      const [header, payload] = audioData.split(',', 2);
+      // Sanitizar: remover espaços e o parâmetro codecs, assegurar ;base64
+      const cleanedHeader = header
+        .replace(/\s+/g, '')
+        .replace(/;codecs=[^;]+/i, '')
+        .replace(/;base64$/i, '');
+      const mime = cleanedHeader.slice(5) || 'audio/ogg';
+      const safeDataUrl = `data:${mime};base64,${payload}`;
+      console.log('🎵 AudioPlayer DEBUG - DataURL sanitizado:', {
+        beforeHeader: header,
+        afterHeader: `data:${mime};base64`,
+        dataUrlLength: safeDataUrl.length,
+        dataUrlPreview: safeDataUrl.substring(0, 100) + '...'
       });
-      return audioData;
+      return safeDataUrl;
     }
 
     const format = detectAudioFormat(audioData);

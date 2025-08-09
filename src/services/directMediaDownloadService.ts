@@ -334,7 +334,7 @@ class DirectMediaDownloadService {
         contentType,
         content: {
           url: mediaUrl,
-          mimetype: mimetype || 'application/octet-stream',
+          mimetype: mimetype || (contentType === 'audio' ? 'audio/ogg' : 'application/octet-stream'),
           mediaKey: base64MediaKey,
           directPath: directPath || ''
         }
