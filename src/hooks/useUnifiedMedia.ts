@@ -77,27 +77,17 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
           timeStamp: new Date().toISOString()
         });
         const mimeType = mediaData.mimetype || getDefaultMimeType();
-        const dataUrl = `data:${mimeType};base64,${base64Data}`;
+        const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:${mimeType};base64,${base64Data}`;
         setDisplayUrl(dataUrl);
         setIsFromCache(true);
         setIsLoading(false); // ⚡ OTIMIZAÇÃO: Parar loading imediatamente
         return;
       }
 
-      // PRIORIDADE 2: Mensagens recebidas com mediaKey - AGUARDAR useAudioAutoProcessor
+      // PRIORIDADE 2: Mensagens recebidas com mediaKey - Áudio também via DirectMedia
       if (mediaData.mediaUrl && mediaData.mediaKey && mediaData.contentType === 'audio') {
-        console.log('⏳ useUnifiedMedia: Áudio criptografado detectado - aguardando useAudioAutoProcessor processar');
-        console.log('📋 useUnifiedMedia: Params:', {
-          messageId: mediaData.messageId,
-          hasMediaKey: !!mediaData.mediaKey,
-          contentType: mediaData.contentType,
-          note: 'useAudioAutoProcessor deve processar e salvar base64 na tabela'
-        });
-        
-        // Para áudios criptografados, aguardar useAudioAutoProcessor salvar o base64
-        setError('Aguardando processamento automático...');
-        setIsLoading(true);
-        return;
+        console.log('🔐 useUnifiedMedia: Áudio criptografado - processando via DirectMedia (Yumer)');
+        // Não retornar aqui: continuar para o bloco unificado abaixo
       }
 
       // PRIORIDADE 2B: Mídia não-áudio com mediaKey - processar normalmente
