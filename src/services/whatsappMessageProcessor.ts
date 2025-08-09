@@ -36,6 +36,8 @@ export const whatsappMessageProcessor = {
         .from('whatsapp_messages')
         .select('*')
         .eq('is_processed', false)
+        .eq('from_me', false)
+        .neq('message_type', 'text')
         .order('timestamp', { ascending: true })
         .limit(50); // Processar até 50 por vez
 
