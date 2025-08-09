@@ -115,6 +115,11 @@ class UnifiedYumerService {
   // Sistema de locks para evitar chamadas duplicadas
   private activeLocks = new Set<string>();
 
+  // Throttle de verificações de webhook para evitar loops (TTL 60s)
+  private WEBHOOK_CHECK_TTL_MS = 60_000;
+  private webhookCheckCache = new Map<string, { ts: number; data?: any; promise?: Promise<{ success: boolean; data?: any; error?: string }> }>();
+
+
   // Request com retry e timeout - CORRIGIDO para suportar business_token
   public async makeRequest<T>(
     endpoint: string, 
@@ -749,56 +754,77 @@ class UnifiedYumerService {
     }
   }
 
-  // Verificar configuração do webhook
+  // Verificar configuração do webhook (com throttle de 60s e coalescência)
   async getWebhookConfig(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    const now = Date.now();
+    const cached = this.webhookCheckCache.get(instanceId);
+
+    // Retornar cache recente
+    if (cached?.data && now - cached.ts < this.WEBHOOK_CHECK_TTL_MS) {
+      return cached.data;
+    }
+    // Aguardar requisição em andamento
+    if (cached?.promise) {
+      try { return await cached.promise; } catch { /* fallthrough */ }
+    }
+
     console.log(`🔍 [WEBHOOK] Obtendo configuração do webhook para: ${instanceId}`);
 
-    try {
-      const result = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
-        method: 'GET'
-      }, true, false);
+    const promise = (async () => {
+      try {
+        const result = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
+          method: 'GET'
+        }, true, false);
 
-      if (result.success && result.data) {
-        // Se result.data é um array, pegar o primeiro webhook
-        const webhookData = Array.isArray(result.data) ? result.data[0] : result.data;
-        
-        console.log('📋 [WEBHOOK] Configuração do webhook:', webhookData);
-        
-        // Verificar se webhook está habilitado no banco
-        try {
-          const { supabase } = await import('@/integrations/supabase/client');
-          const { data: instance } = await supabase
-            .from('whatsapp_instances')
-            .select('webhook_enabled')
-            .eq('instance_id', instanceId)
-            .single();
-            
-          const webhookEnabled = instance?.webhook_enabled || false;
-          const isApiEnabled = webhookData?.enabled || false;
-          
-          return { 
-            success: true, 
-            data: { 
-              ...webhookData, 
-              enabled: webhookEnabled && isApiEnabled,
-              webhook_enabled: webhookEnabled,
-              api_enabled: isApiEnabled
-            } 
-          };
-        } catch (dbError) {
-          console.warn('⚠️ [WEBHOOK] Erro ao verificar status no banco:', dbError);
-          return { success: true, data: webhookData };
+        if (result.success && result.data) {
+          const webhookData = Array.isArray(result.data) ? result.data[0] : result.data;
+          console.log('📋 [WEBHOOK] Configuração do webhook:', webhookData);
+
+          // Verificar status no banco (best-effort)
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            const { data: instance } = await supabase
+              .from('whatsapp_instances')
+              .select('webhook_enabled')
+              .eq('instance_id', instanceId)
+              .single();
+            const webhookEnabled = instance?.webhook_enabled || false;
+            const isApiEnabled = webhookData?.enabled || false;
+            const final = {
+              success: true,
+              data: {
+                ...webhookData,
+                enabled: webhookEnabled && isApiEnabled,
+                webhook_enabled: webhookEnabled,
+                api_enabled: isApiEnabled
+              }
+            } as const;
+            this.webhookCheckCache.set(instanceId, { ts: Date.now(), data: final });
+            return final;
+          } catch (dbError) {
+            console.warn('⚠️ [WEBHOOK] Erro ao verificar status no banco:', dbError);
+            const final = { success: true, data: webhookData } as const;
+            this.webhookCheckCache.set(instanceId, { ts: Date.now(), data: final });
+            return final;
+          }
         }
-      }
 
-      return result;
-    } catch (error) {
-      console.error('❌ [WEBHOOK] Erro ao obter webhook:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Erro desconhecido' 
-      };
-    }
+        this.webhookCheckCache.set(instanceId, { ts: Date.now(), data: result });
+        return result;
+      } catch (error) {
+        console.error('❌ [WEBHOOK] Erro ao obter webhook:', error);
+        const final = { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' } as const;
+        // Não cachear erro por muito tempo, mas evitar tempestade
+        this.webhookCheckCache.set(instanceId, { ts: Date.now(), data: final });
+        return final;
+      } finally {
+        const last = this.webhookCheckCache.get(instanceId);
+        if (last) this.webhookCheckCache.set(instanceId, { ts: last.ts, data: last.data });
+      }
+    })();
+
+    this.webhookCheckCache.set(instanceId, { ts: now, promise });
+    return promise;
   }
 
   // Garantir que webhook está configurado
