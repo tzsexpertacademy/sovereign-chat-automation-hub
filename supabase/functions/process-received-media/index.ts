@@ -236,21 +236,55 @@ Deno.serve(async (req) => {
 
         console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
-        // ✅ SIMPLIFICAÇÃO TOTAL: mediaKey como string direta
+        // ✅ Normalizar mediaKey em Base64 (pode vir como JSON/array/Buffer)
         if (!message.media_key) {
           console.error(`❌ [MEDIA-KEY] MediaKey não encontrada`)
           continue
         }
-        
-        console.log(`🔑 [MEDIA-KEY] Usando mediaKey direta: ${typeof message.media_key}, length: ${message.media_key.length}`)
-        const mediaKeyBase64 = message.media_key
+
+        let mediaKeyBase64: string | null = null
+        try {
+          if (typeof message.media_key === 'string') {
+            const str = message.media_key.trim()
+            if (str.startsWith('[') && str.endsWith(']')) {
+              // Array string → Uint8Array → base64
+              const arr = JSON.parse(str) as number[]
+              mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(arr)))
+            } else if (str.includes('"type":"Buffer"') || str.includes('Uint8Array')) {
+              // Buffer-like JSON dentro de string
+              const json = JSON.parse(str)
+              const data = Array.isArray(json?.data) ? json.data : []
+              mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(data)))
+            } else {
+              // Assumir já base64
+              mediaKeyBase64 = str
+            }
+          } else if (Array.isArray(message.media_key)) {
+            mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(message.media_key as number[])))
+          } else if (typeof message.media_key === 'object' && message.media_key !== null) {
+            const data = Array.isArray((message.media_key as any).data) ? (message.media_key as any).data : null
+            if (data) {
+              mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(data)))
+            }
+          }
+        } catch (e) {
+          console.error('⚠️ [MEDIA-KEY] Falha ao normalizar media_key:', e)
+        }
+
+        if (!mediaKeyBase64) {
+          console.error('❌ [MEDIA-KEY] MediaKey inválida após normalização')
+          continue
+        }
+
+        // Garantir directPath
+        const directPath = message.direct_path || (message.media_url ? new URL(message.media_url).pathname + (new URL(message.media_url).search || '') : null)
 
         const downloadRequest = {
           contentType: message.message_type,
           content: {
             url: message.media_url,
             mediaKey: mediaKeyBase64,
-            directPath: message.direct_path || message.media_url?.split('?')[0],
+            directPath,
             mimetype: message.media_mime_type || getDefaultMimeType(message.message_type)
           }
         }
@@ -333,10 +367,11 @@ Deno.serve(async (req) => {
             const transcription = await transcribeAudio(base64String, ticketData.client_id, supabase)
             
             if (transcription) {
-              // Salvar transcrição sem marcar a mensagem como processada (debounce cuidará da resposta)
+              // Atualizar modelo da própria mensagem: conteúdo textual = transcrição
+              updateData.content = transcription
               updateData.media_transcription = transcription
               updateData.processing_status = 'transcribed'
-              console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida')
+              console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida (conteúdo atualizado)')
 
               // Atualizar somente a transcrição na whatsapp_messages (não alterar body/is_processed)
               await supabase
@@ -345,6 +380,38 @@ Deno.serve(async (req) => {
                   media_transcription: transcription
                 })
                 .eq('message_id', message.message_id)
+
+              // Atualizar preview do ticket
+              try {
+                await supabase
+                  .from('conversation_tickets')
+                  .update({
+                    last_message_preview: transcription,
+                    last_message_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', message.ticket_id)
+              } catch (e) {
+                console.error('⚠️ [POST-TRANSCRIPTION] Falha ao atualizar ticket preview:', e)
+              }
+
+              // Reprogramar debounce para garantir resposta após transcrição
+              try {
+                const debounceUntil = new Date(Date.now() + 4000).toISOString()
+                await supabase
+                  .from('assistant_debounce')
+                  .upsert({
+                    ticket_id: message.ticket_id,
+                    client_id: ticketData.client_id,
+                    instance_id: ticketData.instance_id,
+                    chat_id: (await supabase.from('whatsapp_messages').select('chat_id').eq('message_id', message.message_id).maybeSingle()).data?.chat_id || null,
+                    debounce_until: debounceUntil,
+                    scheduled: true,
+                    last_updated: new Date().toISOString()
+                  }, { onConflict: 'ticket_id' })
+              } catch (e) {
+                console.error('⚠️ [POST-TRANSCRIPTION] Falha no upsert assistant_debounce:', e)
+              }
 
               // Disparar (ou reforçar) processador imediato para este ticket
               try {

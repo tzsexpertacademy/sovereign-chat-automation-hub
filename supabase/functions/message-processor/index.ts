@@ -229,6 +229,23 @@ async function processMessage(webhookData: any) {
         } catch (e) {
           console.error('❌ [MEDIA] Falha ao agendar processamento de mídia:', e);
         }
+
+        // Fallback agressivo: garantir resposta de texto imediata
+        try {
+          if (!fromMe && messageType === 'text' && ticketId) {
+            console.log('🚀 [FALLBACK] Acionando AI diretamente para garantir resposta');
+            const aiResp = await supabase.functions.invoke('ai-assistant-process', {
+              body: { ticketId }
+            });
+            if (aiResp.error) {
+              console.error('❌ [FALLBACK] Erro ao invocar ai-assistant-process direto:', aiResp.error);
+            } else {
+              console.log('✅ [FALLBACK] ai-assistant-process acionado com sucesso');
+            }
+          }
+        } catch (e) {
+          console.error('❌ [FALLBACK] Falha ao acionar AI direta:', e);
+        }
       }
     }
 
