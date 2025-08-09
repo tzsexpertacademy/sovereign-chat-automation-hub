@@ -343,31 +343,11 @@ async function processMessage(webhookData: any) {
               console.log('✅ [FALLBACK] Artifact de texto registrado');
             }
 
-            // 3) Acionar IA
-            console.log('🤖 [FALLBACK] Acionando ai-assistant-process');
-            const aiResp = await supabase.functions.invoke('ai-assistant-process', {
-              body: { 
-                ticketId,
-                clientId,
-                instanceId,
-                chatId,
-                messages: [{
-                  content,
-                  messageId,
-                  timestamp: (timestamp instanceof Date ? timestamp.toISOString() : new Date().toISOString()),
-                  customerName: senderName,
-                  phoneNumber: (chatId && typeof chatId === 'string') ? chatId.split('@')[0] : null
-                }]
-              }
-            });
-            if (aiResp.error) {
-              console.error('❌ [FALLBACK] Erro ao invocar ai-assistant-process direto:', aiResp.error);
-            } else {
-              console.log('✅ [FALLBACK] ai-assistant-process acionado com sucesso');
-            }
+            // 3) Envio direto da IA foi desativado para garantir batching de texto
+            console.log('🛑 [FALLBACK] Envio direto desabilitado (texto será processado em lotes após janela de debounce)');
           }
         } catch (e) {
-          console.error('❌ [FALLBACK] Falha ao acionar IA direta:', e);
+          console.error('❌ [FALLBACK] Falha no caminho de preparação para batching:', e);
         }
       }
     }
@@ -375,9 +355,9 @@ async function processMessage(webhookData: any) {
     // 6. AGENDAR IA VIA DEBOUNCE (apenas para mensagens recebidas)
     if (!fromMe && ticketId) {
       try {
-        // Heurística simples de janela: 4s texto, 10s mídia
+        // Janela de debounce: 10s para texto, 10s para mídia (garante batching)
         const hasMedia = ['audio','ptt','image','video','document'].includes(messageType);
-        const timeoutSec = hasMedia ? 10 : 0;
+        const timeoutSec = hasMedia ? 10 : 10;
         const debounceUntil = new Date(Date.now() + timeoutSec * 1000).toISOString();
 
         // Upsert do estado de debounce por ticket
