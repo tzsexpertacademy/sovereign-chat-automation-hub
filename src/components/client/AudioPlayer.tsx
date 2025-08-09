@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUnifiedMedia } from '@/hooks/useUnifiedMedia';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -32,6 +33,8 @@ const AudioPlayer = ({
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [forceFallback, setForceFallback] = useState(false);
+  const [transcription, setTranscription] = useState<string | null>(null);
+  const [transLoading, setTransLoading] = useState(false);
 
   // 🔧 DEBUG: Log inicial dos dados recebidos
   console.log('🎵 AudioPlayer DEBUG - Props recebidas:', {
@@ -183,6 +186,46 @@ const AudioPlayer = ({
     };
   }, [finalDisplayUrl]);
 
+  // Buscar e assinar transcrição no banco
+  useEffect(() => {
+    if (!messageId) return;
+    let active = true;
+    const fetchTranscription = async () => {
+      try {
+        setTransLoading(true);
+        const { data } = await supabase
+          .from('ticket_messages')
+          .select('media_transcription')
+          .eq('message_id', messageId)
+          .single();
+        if (!active) return;
+        setTranscription(data?.media_transcription || null);
+      } finally {
+        setTransLoading(false);
+      }
+    };
+    fetchTranscription();
+
+    const channel = supabase
+      .channel(`tm-${messageId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'ticket_messages',
+        filter: `message_id=eq.${messageId}`,
+      }, (payload) => {
+        // @ts-ignore
+        const newT = payload.new?.media_transcription ?? null;
+        setTranscription(newT);
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [messageId]);
+
   const togglePlay = async () => {
     if (!audioRef.current || (!finalDisplayUrl && !error)) return;
 
@@ -266,102 +309,110 @@ const AudioPlayer = ({
 
   // Exibir sempre o player
   return (
-    <div className="flex items-center space-x-3 bg-muted/30 p-3 rounded-lg border">
-      <audio 
-        ref={audioRef}
-        src={finalDisplayUrl || undefined}
-        preload="metadata"
-      />
-      
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={togglePlay}
-        disabled={isLoading || (!finalDisplayUrl && !error)}
-        className="h-8 w-8 p-0"
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isPlaying ? (
-          <Pause className="h-4 w-4" />
-        ) : (
-          <Play className="h-4 w-4" />
-        )}
-      </Button>
-
-      <Volume2 className="h-4 w-4 text-muted-foreground" />
-      
-      <div className="flex-1">
-        <input
-          type="range"
-          min="0"
-          max={totalDuration || 100}
-          value={currentTime}
-          onChange={handleSeek}
-          disabled={!finalDisplayUrl || isLoading}
-          className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+    <>
+      <div className="flex items-center space-x-3 bg-muted/30 p-3 rounded-lg border">
+        <audio 
+          ref={audioRef}
+          src={finalDisplayUrl || undefined}
+          preload="metadata"
         />
-        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(totalDuration)}</span>
-        </div>
-      </div>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={downloadAudio}
-        disabled={!finalDisplayUrl || isLoading}
-        className="h-8 w-8 p-0"
-        title="Baixar áudio"
-      >
-        <Download className="h-4 w-4" />
-      </Button>
-
-      {/* Botão de retry */}
-      {error && !hasRetried && (
+        
         <Button
           variant="ghost"
           size="sm"
-          onClick={retry}
+          onClick={togglePlay}
+          disabled={isLoading || (!finalDisplayUrl && !error)}
           className="h-8 w-8 p-0"
-          title="Tentar novamente"
         >
-          <RotateCcw className="h-4 w-4" />
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
         </Button>
-      )}
 
-      {/* Status indicators */}
-      <div className="flex flex-col items-end text-xs min-w-[80px]">
-        {isLoading && (
-          <div className="text-muted-foreground flex items-center">
-            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-            Carregando...
-          </div>
-        )}
+        <Volume2 className="h-4 w-4 text-muted-foreground" />
         
-        {error && (
-          <div className="text-destructive flex items-center">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            <span className="truncate max-w-[60px]" title={error}>
-              {error}
-            </span>
+        <div className="flex-1">
+          <input
+            type="range"
+            min="0"
+            max={totalDuration || 100}
+            value={currentTime}
+            onChange={handleSeek}
+            disabled={!finalDisplayUrl || isLoading}
+            className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(totalDuration)}</span>
           </div>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={downloadAudio}
+          disabled={!finalDisplayUrl || isLoading}
+          className="h-8 w-8 p-0"
+          title="Baixar áudio"
+        >
+          <Download className="h-4 w-4" />
+        </Button>
+
+        {/* Botão de retry */}
+        {error && !hasRetried && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={retry}
+            className="h-8 w-8 p-0"
+            title="Tentar novamente"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </Button>
         )}
 
-        {isFromCache && !error && (
-          <div className="text-green-600 text-xs">
-            Cache
-          </div>
-        )}
-        
-        {finalDisplayUrl && !error && !isLoading && (
-          <div className="text-green-600 flex items-center">
-            ✓ Pronto
-          </div>
-        )}
+        {/* Status indicators */}
+        <div className="flex flex-col items-end text-xs min-w-[80px]">
+          {isLoading && (
+            <div className="text-muted-foreground flex items-center">
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              Carregando...
+            </div>
+          )}
+          
+          {error && (
+            <div className="text-destructive flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              <span className="truncate max-w-[60px]" title={error}>
+                {error}
+              </span>
+            </div>
+          )}
+
+          {isFromCache && !error && (
+            <div className="text-green-600 text-xs">
+              Cache
+            </div>
+          )}
+          
+          {finalDisplayUrl && !error && !isLoading && (
+            <div className="text-green-600 flex items-center">
+              ✓ Pronto
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {(transLoading || transcription) && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          {transcription ? transcription : 'Transcrevendo...'}
+        </div>
+      )}
+    </>
   );
 };
 

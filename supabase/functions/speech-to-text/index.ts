@@ -319,7 +319,9 @@ serve(async (req) => {
 
         // Criar FormData para OpenAI Whisper com os bytes originais (sem conversões artificiais)
         const formData = new FormData();
-        const audioBlob = new Blob([audioBytes], { type: mimeType });
+        // For ogg/opus, force generic octet-stream to let OpenAI sniff content
+        const blobType = format === 'ogg' ? 'application/octet-stream' : mimeType;
+        const audioBlob = new Blob([audioBytes], { type: blobType });
         const fileExt = format === 'ogg' ? 'oga' : format;
         const fileName = `audio.${fileExt}`;
 
