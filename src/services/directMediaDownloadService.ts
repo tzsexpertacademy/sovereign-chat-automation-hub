@@ -381,7 +381,7 @@ class DirectMediaDownloadService {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Accept': requestBody.content.mimetype || (contentType === 'audio' ? 'audio/ogg; codecs=opus' : 'application/octet-stream'),
+              'Accept': 'application/octet-stream',
               'Authorization': `Bearer ${this.businessToken}`
             },
             body: JSON.stringify(requestBody)
@@ -411,7 +411,7 @@ class DirectMediaDownloadService {
         // Reempacotar com mimetype correto quando vier genérico
         const finalBlob = (rawBlob.type && rawBlob.type !== 'application/octet-stream')
           ? rawBlob
-          : new Blob([await rawBlob.arrayBuffer()], { type: requestBody.content.mimetype || (contentType === 'audio' ? 'audio/ogg; codecs=opus' : 'application/octet-stream') });
+          : new Blob([await rawBlob.arrayBuffer()], { type: requestBody.content.mimetype || (contentType === 'audio' ? 'audio/ogg' : 'application/octet-stream') });
         
         console.log(`📦 [MEDIA-${contentType.toUpperCase()}] Blob recebido:`, {
           size: finalBlob.size,

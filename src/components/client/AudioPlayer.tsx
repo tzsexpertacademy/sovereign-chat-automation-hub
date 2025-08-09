@@ -31,6 +31,7 @@ const AudioPlayer = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [forceFallback, setForceFallback] = useState(false);
 
   // 🔧 DEBUG: Log inicial dos dados recebidos
   console.log('🎵 AudioPlayer DEBUG - Props recebidas:', {
@@ -91,7 +92,7 @@ const AudioPlayer = ({
     }
 
     const format = detectAudioFormat(audioData);
-    const mimeType = format === 'ogg' ? 'audio/ogg; codecs=opus' : 
+    const mimeType = format === 'ogg' ? 'audio/ogg' : 
                     format === 'wav' ? 'audio/wav' : 
                     format === 'mp3' ? 'audio/mpeg' : 'audio/ogg';
     const dataUrl = `data:${mimeType};base64,${audioData}`;
@@ -112,13 +113,13 @@ const AudioPlayer = ({
     mediaUrl: audioUrl,
     mediaKey,
     fileEncSha256,
-    mimetype: 'audio/ogg; codecs=opus',
+    mimetype: 'audio/ogg',
     contentType: 'audio',
     audioBase64: audioData
   });
 
-  // URL final: priorizar base64 direto, depois fallback
-  const finalDisplayUrl = audioDisplayUrl || displayUrl;
+  // URL final: priorizar base64 direto, com fallback automático para URL processada
+  const finalDisplayUrl = (forceFallback ? displayUrl : audioDisplayUrl) || displayUrl;
 
   // 🔧 DEBUG: Log dos estados do useUnifiedMedia e URL final
   console.log('🎵 AudioPlayer DEBUG - Estados:', {
@@ -147,12 +148,25 @@ const AudioPlayer = ({
       });
     };
     const handleError = (e: Event) => {
+      const target = e.target as HTMLAudioElement;
       console.error('🎵 AudioPlayer DEBUG - Erro no áudio:', {
-        error: (e.target as HTMLAudioElement)?.error,
-        src: (e.target as HTMLAudioElement)?.src,
-        readyState: (e.target as HTMLAudioElement)?.readyState,
-        networkState: (e.target as HTMLAudioElement)?.networkState
+        error: target?.error,
+        src: target?.src,
+        readyState: target?.readyState,
+        networkState: target?.networkState
       });
+      // Fallback automático: se base64 falhar e houver URL processada, alternar
+      if (!forceFallback && audioDisplayUrl && displayUrl) {
+        console.warn('🔁 AudioPlayer: Alternando para URL processada (fallback)');
+        setForceFallback(true);
+        // Tentar tocar novamente após trocar a URL
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.load();
+            audioRef.current.play().catch(() => {/* ignore */});
+          }
+        }, 50);
+      }
     };
     const handleEnded = () => setIsPlaying(false);
 
