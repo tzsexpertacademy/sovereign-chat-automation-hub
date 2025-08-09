@@ -269,9 +269,13 @@ const AudioPlayer = ({
     <div className="flex items-center space-x-3 bg-muted/30 p-3 rounded-lg border">
       <audio 
         ref={audioRef}
-        src={finalDisplayUrl || undefined}
         preload="metadata"
-      />
+        crossOrigin="anonymous"
+      >
+        {finalDisplayUrl && (
+          <source src={finalDisplayUrl} type="audio/ogg" />
+        )}
+      </audio>
       
       <Button
         variant="ghost"

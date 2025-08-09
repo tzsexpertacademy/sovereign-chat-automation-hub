@@ -301,7 +301,15 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${clientData.business_token}`
+            'Authorization': `Bearer ${clientData.business_token}`,
+            // Solicitar binário descriptografado no tipo correto
+            'Accept': (message.message_type === 'audio' || message.message_type === 'ptt')
+              ? (message.media_mime_type || 'audio/ogg; codecs=opus')
+              : (message.message_type === 'image')
+                ? (message.media_mime_type || 'image/jpeg')
+                : (message.message_type === 'video')
+                  ? (message.media_mime_type || 'video/mp4')
+                  : 'application/octet-stream'
           },
           body: JSON.stringify(downloadRequest)
         })
@@ -461,7 +469,6 @@ Deno.serve(async (req) => {
     
     console.log(`🎯 Descriptografia concluída: ${processedCount} sucesso, ${errorCount} erros`)
 
-    // ✅ FLUXO UNIFICADO: Chamar análise de mídia se houve descriptografias
     if (processedCount > 0) {
       console.log('🧠 [UNIFIED-FLOW] Disparando análise de mídia...')
       try {
@@ -469,6 +476,16 @@ Deno.serve(async (req) => {
         console.log('✅ [UNIFIED-FLOW] Análise de mídia disparada')
       } catch (analysisError) {
         console.error('❌ [UNIFIED-FLOW] Erro ao disparar análise:', analysisError)
+      }
+
+      // 🚀 Disparar processamento de lotes após transcrição/conversão
+      try {
+        await supabase.functions.invoke('process-message-batches', {
+          body: { trigger: 'transcription', limit: 10, orphaned: true }
+        })
+        console.log('✅ [UNIFIED-FLOW] process-message-batches acionado')
+      } catch (batchError) {
+        console.error('❌ [UNIFIED-FLOW] Erro ao acionar process-message-batches:', batchError)
       }
     }
 
