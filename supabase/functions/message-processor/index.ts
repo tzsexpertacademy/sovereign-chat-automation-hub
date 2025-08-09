@@ -28,18 +28,20 @@ Deno.serve(async (req) => {
       const webhookData = await req.json();
       console.log('📨 [MESSAGE-PROCESSOR] Webhook recebido:', webhookData.event);
 
-      // Processar apenas mensagens do Yumer
-      if (webhookData.event === 'messages.upsert' && webhookData.data) {
+      // Processar apenas mensagens do Yumer (suporta ambos formatos)
+      const event = webhookData?.event;
+      const isMessageEvent = event === 'messages.upsert' || event === 'messagesUpsert';
+      if (isMessageEvent && webhookData.data) {
         return await processMessage(webhookData);
       }
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ success: true, ignored: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
 
     } catch (error) {
       console.error('❌ [MESSAGE-PROCESSOR] Erro:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
+      return new Response(JSON.stringify({ error: (error as any).message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -51,10 +53,14 @@ Deno.serve(async (req) => {
 
 async function processMessage(webhookData: any) {
   const messageData = webhookData.data;
-  const instanceId = webhookData.instance?.instanceId;
+  // Resolver instanceId de várias formas possíveis
+  const instanceId = webhookData.instance?.instanceId 
+    || messageData?.instanceInstanceId 
+    || webhookData?.instanceId 
+    || messageData?.instance?.instanceId;
   
   if (!messageData || !instanceId) {
-    return new Response(JSON.stringify({ error: 'Dados inválidos' }), {
+    return new Response(JSON.stringify({ error: 'Dados inválidos', hasData: !!messageData, instanceId }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -81,22 +87,27 @@ async function processMessage(webhookData: any) {
     const clientId = instanceData.client_id;
     console.log('✅ [PROCESS] Cliente encontrado:', clientId);
 
-    // 2. EXTRAIR DADOS DA MENSAGEM
-    const chatId = messageData.keyRemoteJid;
-    const messageId = messageData.keyId;
-    const fromMe = messageData.keyFromMe || false;
-    const timestamp = new Date(messageData.messageTimestamp * 1000);
+    // 2. EXTRAIR DADOS DA MENSAGEM (com fallbacks robustos)
+    const chatId = messageData.keyRemoteJid || messageData.remoteJid || messageData.key?.remoteJid;
+    const messageId = messageData.keyId || messageData.messageId || messageData.key?.id;
+    const fromMe = (messageData.keyFromMe ?? messageData.fromMe ?? messageData.key?.fromMe) || false;
+    const timestamp = messageData.messageTimestamp
+      ? new Date(messageData.messageTimestamp * 1000)
+      : (messageData.createdAt ? new Date(messageData.createdAt) : new Date());
     const senderName = messageData.pushName || messageData.verifiedBizName || 'Usuário';
     
     // Conteúdo da mensagem
     let content = '';
-    let messageType = 'text';
-    let mediaData = null;
+    let messageType: 'text' | 'audio' | 'image' | 'video' | 'document' = 'text';
+    let mediaData: any = null;
 
     if (messageData.message?.conversation) {
       content = messageData.message.conversation;
     } else if (messageData.message?.extendedTextMessage?.text) {
       content = messageData.message.extendedTextMessage.text;
+    } else if (messageData.content?.text) {
+      // Fallback para payload "data.content.text"
+      content = messageData.content.text;
     } else if (messageData.message?.audioMessage) {
       content = '🎵 Áudio';
       messageType = 'audio';
