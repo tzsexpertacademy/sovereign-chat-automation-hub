@@ -27,8 +27,20 @@ Deno.serve(async (req) => {
 
       // DETECTAR MENSAGENS YUMER
       if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.instanceId) {
-        console.log('📨 [YUMER-WEBHOOK] MENSAGEM DETECTADA - PROCESSANDO');
-        return await processYumerMessage(webhookData);
+        console.log('📨 [YUMER-WEBHOOK] Encaminhando para message-processor');
+        const { data, error } = await supabase.functions.invoke('message-processor', {
+          body: webhookData,
+        });
+        if (error) {
+          console.error('❌ [YUMER-WEBHOOK] Falha ao encaminhar para message-processor:', error);
+          return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({ success: true, forwarded: true, data }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
 
       return new Response(JSON.stringify({ success: true, message: 'Event processed' }), {
