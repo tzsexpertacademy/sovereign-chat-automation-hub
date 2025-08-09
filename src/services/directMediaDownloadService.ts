@@ -307,10 +307,20 @@ class DirectMediaDownloadService {
       });
       
       // Converter mediaKey se necessário - garantir que é Base64 string
-      let base64MediaKey = mediaKey;
-      if (typeof mediaKey === 'object' && mediaKey !== null) {
+      let base64MediaKey: any = mediaKey;
+      // Caso mediaKey tenha vindo serializado como string JSON de bytes: "{\"0\":227,...}"
+      if (typeof base64MediaKey === 'string' && base64MediaKey.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(base64MediaKey);
+          console.log(`🔄 [MEDIA-${contentType.toUpperCase()}] Convertendo mediaKey string JSON -> Base64`);
+          base64MediaKey = this.convertToBase64(parsed);
+        } catch (e) {
+          console.warn(`⚠️ [MEDIA-${contentType.toUpperCase()}] Falha ao parsear mediaKey JSON string`);
+        }
+      }
+      if (typeof base64MediaKey === 'object' && base64MediaKey !== null) {
         console.log(`🔄 [MEDIA-${contentType.toUpperCase()}] Convertendo mediaKey de objeto para Base64`);
-        base64MediaKey = this.convertToBase64(mediaKey);
+        base64MediaKey = this.convertToBase64(base64MediaKey);
       }
       
       if (!base64MediaKey || typeof base64MediaKey !== 'string') {
@@ -396,30 +406,34 @@ class DirectMediaDownloadService {
           throw new Error(`API directly-download falhou para ${contentType}: ${response.status} ${errorText}`);
         }
 
-        // O servidor já retornou o blob descriptografado - usar diretamente
-        const blob = await response.blob();
+        const rawBlob = await response.blob();
+        // Reempacotar com mimetype correto quando vier genérico
+        const finalBlob = (rawBlob.type && rawBlob.type !== 'application/octet-stream')
+          ? rawBlob
+          : new Blob([await rawBlob.arrayBuffer()], { type: requestBody.content.mimetype || (contentType === 'audio' ? 'audio/ogg' : 'application/octet-stream') });
         
         console.log(`📦 [MEDIA-${contentType.toUpperCase()}] Blob recebido:`, {
-          size: blob.size,
-          type: blob.type,
+          size: finalBlob.size,
+          type: finalBlob.type,
+          serverType: rawBlob.type,
           contentType: requestBody.contentType
         });
         
-        if (blob.size === 0) {
+        if (finalBlob.size === 0) {
           console.error(`❌ [MEDIA-${contentType.toUpperCase()}] Blob vazio recebido da API`);
           throw new Error(`Blob vazio recebido para ${contentType}`);
         }
         
         // Verificar se o tipo MIME está correto para imagens
-        if (contentType === 'image' && blob.type && !blob.type.startsWith('image/')) {
-          console.warn(`⚠️ [MEDIA-${contentType.toUpperCase()}] Tipo MIME inesperado:`, blob.type, 'esperado image/*');
+        if (contentType === 'image' && finalBlob.type && !finalBlob.type.startsWith('image/')) {
+          console.warn(`⚠️ [MEDIA-${contentType.toUpperCase()}] Tipo MIME inesperado:`, finalBlob.type, 'esperado image/*');
         }
         
-        const blobUrl = URL.createObjectURL(blob);
+        const blobUrl = URL.createObjectURL(finalBlob);
         
         console.log(`✅ [MEDIA-${contentType.toUpperCase()}] Download direto bem-sucedido:`, {
-          blobSize: blob.size,
-          blobType: blob.type,
+          blobSize: finalBlob.size,
+          blobType: finalBlob.type,
           mediaUrl: blobUrl.substring(0, 50) + '...'
         });
         
