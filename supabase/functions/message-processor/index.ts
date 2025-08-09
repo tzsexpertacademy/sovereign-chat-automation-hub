@@ -282,14 +282,13 @@ async function processMessage(webhookData: any) {
             const aiResp = await supabase.functions.invoke('ai-assistant-process', {
               body: { 
                 ticketId,
-                message: {
-                  messageId,
+                messages: [{
                   content,
-                  fromMe: false,
-                  role: 'user',
+                  messageId,
                   timestamp: (timestamp instanceof Date ? timestamp.toISOString() : new Date().toISOString()),
-                  senderName
-                }
+                  customerName: senderName,
+                  phoneNumber: (chatId && typeof chatId === 'string') ? chatId.split('@')[0] : null
+                }]
               }
             });
             if (aiResp.error) {
