@@ -206,6 +206,29 @@ async function processMessage(webhookData: any) {
         console.error('❌ [PROCESS] Erro ao salvar no ticket:', ticketMessageError);
       } else {
         console.log('✅ [PROCESS] Mensagem salva no ticket');
+        // Disparar processamento de mídia (descrifrar + transcrever) para áudio
+        try {
+          if (messageType === 'audio' && mediaData) {
+            const resp = await supabase.functions.invoke('process-received-media', {
+              body: {
+                messageId,
+                instanceId,
+                mediaType: 'audio',
+                mimetype: mediaData?.mimetype,
+                url: mediaData?.url,
+                mediaKey: mediaData?.mediaKey,
+                directPath: mediaData?.directPath
+              }
+            });
+            if (resp.error) {
+              console.error('❌ [MEDIA] Erro ao invocar process-received-media:', resp.error);
+            } else {
+              console.log('✅ [MEDIA] process-received-media invocada:', resp.data);
+            }
+          }
+        } catch (e) {
+          console.error('❌ [MEDIA] Falha ao agendar processamento de mídia:', e);
+        }
       }
     }
 

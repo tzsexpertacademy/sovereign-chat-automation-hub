@@ -126,29 +126,52 @@ Deno.serve(async (req) => {
       throw new Error('Processing timeout exceeded')
     }, 30000)
 
-        // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
-        console.log('🔍 [MEDIA-DECRYPT] Buscando mensagens pendentes de descriptografia...')
-        
-        const { data: pendingMessages, error: queryError } = await supabase
-          .from('ticket_messages')
-          .select('*')
-          .in('message_type', ['audio', 'image', 'video', 'document'])
-          .not('media_key', 'is', null)
-          .not('media_url', 'is', null)
-          .eq('processing_status', 'received')
-          .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
-          .order('created_at', { ascending: true })
-          .limit(5)
-    
-    console.log(`🔍 [MEDIA-DECRYPT] Encontradas ${pendingMessages?.length || 0} mensagens para processamento`)
+    // 🔄 MODO DIRETO (single-message) OU VARREDURA PADRÃO
+    const body = await req.json().catch(() => null)
 
-    if (queryError) {
-      console.error('❌ Erro ao buscar mensagens pendentes:', queryError)
-      return new Response(JSON.stringify({ error: 'Query failed' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+    let pendingMessages: any[] = []
+
+    if (body?.messageId) {
+      console.log('🎯 [MEDIA-DECRYPT] Modo direto por messageId:', body.messageId)
+      const { data: single, error: singleErr } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .eq('message_id', body.messageId)
+        .single()
+      if (singleErr || !single) {
+        console.error('❌ [MEDIA-DECRYPT] Mensagem não encontrada para processamento direto:', singleErr)
+        return new Response(JSON.stringify({ error: 'Message not found', messageId: body.messageId }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+      pendingMessages = [single]
+    } else {
+      // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
+      console.log('🔍 [MEDIA-DECRYPT] Buscando mensagens pendentes de descriptografia...')
+      const { data: qData, error: queryError } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .in('message_type', ['audio', 'image', 'video', 'document'])
+        .not('media_key', 'is', null)
+        .not('media_url', 'is', null)
+        .eq('processing_status', 'received')
+        .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
+        .order('created_at', { ascending: true })
+        .limit(5)
+
+      if (queryError) {
+        console.error('❌ Erro ao buscar mensagens pendentes:', queryError)
+        return new Response(JSON.stringify({ error: 'Query failed' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+      pendingMessages = qData || []
     }
+
+    console.log(`🔍 [MEDIA-DECRYPT] Encontradas ${pendingMessages.length} mensagens para processamento`)
+
 
     if (!pendingMessages || pendingMessages.length === 0) {
       console.log('ℹ️ Nenhuma mensagem de mídia pendente encontrada')
@@ -310,77 +333,31 @@ Deno.serve(async (req) => {
             const transcription = await transcribeAudio(base64String, ticketData.client_id, supabase)
             
             if (transcription) {
-              // Usar só a transcrição como content (versão original)
-              updateData.content = transcription
+              // Salvar transcrição sem marcar a mensagem como processada (debounce cuidará da resposta)
               updateData.media_transcription = transcription
-              updateData.processing_status = 'completed'
-              console.log('✅ [AUTO-TRANSCRIBE] Content atualizado com transcrição')
-              
-              // Também atualizar na tabela whatsapp_messages se existir
+              updateData.processing_status = 'transcribed'
+              console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida')
+
+              // Atualizar somente a transcrição na whatsapp_messages (não alterar body/is_processed)
               await supabase
                 .from('whatsapp_messages')
                 .update({ 
-                  body: updateData.content,
-                  is_processed: true,
-                  processed_at: new Date().toISOString()
+                  media_transcription: transcription
                 })
                 .eq('message_id', message.message_id)
-              
-              // ✅ CRIAR BATCH APÓS TRANSCRIÇÃO BEM-SUCEDIDA
-              console.log('🎵 [POST-TRANSCRIPTION] Criando batch com transcrição para IA...')
-              
-              const batchMessage = {
-                messageId: message.message_id,
-                chatId: ticketData.instance_id,
-                content: transcription,
-                fromMe: false,
-                timestamp: Date.now(),
-                pushName: message.sender_name || 'Unknown'
-              };
 
-              // Buscar chat_id real da mensagem original
-              const { data: originalMessage } = await supabase
-                .from('whatsapp_messages')
-                .select('chat_id')
-                .eq('message_id', message.message_id)
-                .single();
-
-              if (originalMessage?.chat_id) {
-                batchMessage.chatId = originalMessage.chat_id;
+              // Disparar (ou reforçar) processador imediato para este ticket
+              try {
+                await supabase.functions.invoke('immediate-batch-processor', {
+                  body: { ticketId: message.ticket_id }
+                })
+                console.log('🚀 [POST-TRANSCRIPTION] immediate-batch-processor acionado')
+              } catch (e) {
+                console.error('⚠️ [POST-TRANSCRIPTION] Falha ao acionar immediate-batch-processor:', e)
               }
-
-              // Criar batch com RPC V2 (corrigido)
-              const { data: batchResult, error: batchError } = await supabase
-                .rpc('manage_message_batch_v2', {
-                  p_chat_id: batchMessage.chatId,
-                  p_client_id: ticketData.client_id,
-                  p_instance_id: ticketData.instance_id,
-                  p_message: batchMessage
-                });
-
-              if (batchError) {
-                console.error('❌ [POST-TRANSCRIPTION] Erro ao criar batch:', batchError);
-              } else {
-                console.log('✅ [POST-TRANSCRIPTION] Batch criado com transcrição:', batchResult);
-                
-                // Disparar processamento se for novo batch
-                if (batchResult?.is_new_batch) {
-                  console.log('🚀 [POST-TRANSCRIPTION] Disparando processamento de batch com transcrição...');
-                  
-                  await supabase.functions.invoke('process-message-batches', {
-                    body: { 
-                      trigger: 'post_transcription',
-                      chatId: batchMessage.chatId,
-                      timestamp: new Date().toISOString()
-                    }
-                  });
-                }
-              }
-              
-              console.log('🔄 [AUTO-TRANSCRIBE] Mensagem sincronizada em todas as tabelas')
             } else {
               console.log('⚠️ [AUTO-TRANSCRIBE] Transcrição falhou, mantendo placeholder')
-              updateData.processing_status = 'completed'
+              updateData.processing_status = 'processed'
             }
           }
         }
