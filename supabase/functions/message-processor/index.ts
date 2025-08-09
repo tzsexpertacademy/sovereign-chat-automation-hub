@@ -90,7 +90,10 @@ async function processMessage(webhookData: any) {
     // 2. EXTRAIR DADOS DA MENSAGEM (com fallbacks robustos)
     const chatId = messageData.keyRemoteJid || messageData.remoteJid || messageData.key?.remoteJid;
     const messageId = messageData.keyId || messageData.messageId || messageData.key?.id;
-    const fromMe = (messageData.keyFromMe ?? messageData.fromMe ?? messageData.key?.fromMe) || false;
+    const fromMeRaw = messageData.keyFromMe ?? messageData.fromMe ?? messageData.key?.fromMe;
+    const fromMe = typeof fromMeRaw === 'boolean'
+      ? fromMeRaw
+      : (fromMeRaw === true || fromMeRaw === 'true' || fromMeRaw === 1 || fromMeRaw === '1');
     const timestamp = messageData.messageTimestamp
       ? new Date(messageData.messageTimestamp * 1000)
       : (messageData.createdAt ? new Date(messageData.createdAt) : new Date());
