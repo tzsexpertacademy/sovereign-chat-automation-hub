@@ -186,6 +186,18 @@ const AudioPlayer = ({
     };
   }, [finalDisplayUrl]);
 
+  // Forçar reload do elemento de áudio quando a src muda
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (finalDisplayUrl) {
+      try {
+        audio.load();
+        console.log('🎵 AudioPlayer DEBUG - Recarregado após mudança de src');
+      } catch (e) { /* noop */ }
+    }
+  }, [finalDisplayUrl]);
+
   // Buscar e assinar transcrição no banco
   useEffect(() => {
     if (!messageId) return;
@@ -312,6 +324,7 @@ const AudioPlayer = ({
     <>
       <div className="flex items-center space-x-3 bg-muted/30 p-3 rounded-lg border">
         <audio 
+          key={finalDisplayUrl || 'no-src'}
           ref={audioRef}
           src={finalDisplayUrl || undefined}
           preload="metadata"

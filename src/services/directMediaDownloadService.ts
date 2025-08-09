@@ -381,7 +381,7 @@ class DirectMediaDownloadService {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Accept': 'application/octet-stream',
+              'Accept': 'audio/ogg, application/octet-stream;q=0.9',
               'Authorization': `Bearer ${this.businessToken}`
             },
             body: JSON.stringify(requestBody)
