@@ -236,21 +236,55 @@ Deno.serve(async (req) => {
 
         console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
-        // ✅ SIMPLIFICAÇÃO TOTAL: mediaKey como string direta
+        // ✅ Normalizar mediaKey em Base64 (pode vir como JSON/array/Buffer)
         if (!message.media_key) {
           console.error(`❌ [MEDIA-KEY] MediaKey não encontrada`)
           continue
         }
-        
-        console.log(`🔑 [MEDIA-KEY] Usando mediaKey direta: ${typeof message.media_key}, length: ${message.media_key.length}`)
-        const mediaKeyBase64 = message.media_key
+
+        let mediaKeyBase64: string | null = null
+        try {
+          if (typeof message.media_key === 'string') {
+            const str = message.media_key.trim()
+            if (str.startsWith('[') && str.endsWith(']')) {
+              // Array string → Uint8Array → base64
+              const arr = JSON.parse(str) as number[]
+              mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(arr)))
+            } else if (str.includes('"type":"Buffer"') || str.includes('Uint8Array')) {
+              // Buffer-like JSON dentro de string
+              const json = JSON.parse(str)
+              const data = Array.isArray(json?.data) ? json.data : []
+              mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(data)))
+            } else {
+              // Assumir já base64
+              mediaKeyBase64 = str
+            }
+          } else if (Array.isArray(message.media_key)) {
+            mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(message.media_key as number[])))
+          } else if (typeof message.media_key === 'object' && message.media_key !== null) {
+            const data = Array.isArray((message.media_key as any).data) ? (message.media_key as any).data : null
+            if (data) {
+              mediaKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(data)))
+            }
+          }
+        } catch (e) {
+          console.error('⚠️ [MEDIA-KEY] Falha ao normalizar media_key:', e)
+        }
+
+        if (!mediaKeyBase64) {
+          console.error('❌ [MEDIA-KEY] MediaKey inválida após normalização')
+          continue
+        }
+
+        // Garantir directPath
+        const directPath = message.direct_path || (message.media_url ? new URL(message.media_url).pathname + (new URL(message.media_url).search || '') : null)
 
         const downloadRequest = {
           contentType: message.message_type,
           content: {
             url: message.media_url,
             mediaKey: mediaKeyBase64,
-            directPath: message.direct_path || message.media_url?.split('?')[0],
+            directPath,
             mimetype: message.media_mime_type || getDefaultMimeType(message.message_type)
           }
         }
