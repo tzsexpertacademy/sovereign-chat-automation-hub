@@ -233,8 +233,8 @@ async function processMessage(webhookData: any) {
         // Fallback agressivo: garantir resposta de texto imediata
         try {
           if (!fromMe && messageType === 'text' && ticketId) {
-            console.log('🚀 [FALLBACK] Preparando batch imediato antes da IA');
-            // Criar batch imediato para garantir que a IA tenha conteúdo para processar
+            console.log('🚀 [FALLBACK] Preparando batch imediato e artifact antes da IA');
+            // 1) Criar batch imediato para garantir que a IA tenha conteúdo para processar
             const payload = {
               chat_id: chatId,
               client_id: clientId,
@@ -254,6 +254,30 @@ async function processMessage(webhookData: any) {
               console.log('✅ [FALLBACK] Batch imediato criado:', batchResp.data);
             }
 
+            // 2) Registrar artifact de texto (idempotente)
+            const artifact = {
+              message_id: messageId,
+              correlation_id: `ticket:${ticketId}`,
+              ticket_id: ticketId,
+              client_id: clientId,
+              instance_id: instanceId,
+              chat_id: chatId,
+              type: 'clean_text',
+              status: 'done',
+              payload: { text: content, sender: senderName },
+              pipeline: 'text@1.0.0',
+              idempotency_key: `${messageId}-clean_text`
+            };
+            const { error: artifactErr } = await supabase
+              .from('message_artifacts')
+              .upsert(artifact, { onConflict: 'idempotency_key' });
+            if (artifactErr) {
+              console.error('❌ [FALLBACK] Erro ao registrar artifact de texto:', artifactErr);
+            } else {
+              console.log('✅ [FALLBACK] Artifact de texto registrado');
+            }
+
+            // 3) Acionar IA
             console.log('🤖 [FALLBACK] Acionando ai-assistant-process');
             const aiResp = await supabase.functions.invoke('ai-assistant-process', {
               body: { ticketId }

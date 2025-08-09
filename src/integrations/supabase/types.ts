@@ -1406,6 +1406,60 @@ export type Database = {
         }
         Relationships: []
       }
+      message_artifacts: {
+        Row: {
+          blob_ref: string | null
+          chat_id: string
+          client_id: string
+          correlation_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          instance_id: string
+          message_id: string
+          payload: Json
+          pipeline: string | null
+          status: string
+          ticket_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          blob_ref?: string | null
+          chat_id: string
+          client_id: string
+          correlation_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          instance_id: string
+          message_id: string
+          payload?: Json
+          pipeline?: string | null
+          status?: string
+          ticket_id?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          blob_ref?: string | null
+          chat_id?: string
+          client_id?: string
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          instance_id?: string
+          message_id?: string
+          payload?: Json
+          pipeline?: string | null
+          status?: string
+          ticket_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       message_batches: {
         Row: {
           chat_id: string
