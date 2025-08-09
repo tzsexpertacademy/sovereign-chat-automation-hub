@@ -148,8 +148,8 @@ async function processMessage(webhookData: any) {
         media_mime_type: mediaData?.mimetype,
         media_duration: mediaData?.seconds,
         direct_path: mediaData?.directPath,
-        is_processed: true, // Já processamos
-        processed_at: new Date()
+        is_processed: fromMe ? true : false, // Cliente: pendente até IA responder
+        processed_at: fromMe ? new Date() : null
       });
 
     if (messageError) {
