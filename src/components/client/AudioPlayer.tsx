@@ -49,9 +49,12 @@ const AudioPlayer = ({
   // Detectar formato de áudio pelos headers (função auxiliar)
   const detectAudioFormat = (base64Data: string): string => {
     try {
-      if (!base64Data || base64Data.length < 40) return 'ogg';
-      
-      const sampleChunk = base64Data.substring(0, 64);
+      if (!base64Data) return 'ogg';
+      // Se vier como data URL, remover prefixo
+      const clean = base64Data.startsWith('data:') ? base64Data.split(',')[1] : base64Data;
+      if (!clean || clean.length < 40) return 'ogg';
+
+      const sampleChunk = clean.substring(0, 64);
       const decoded = atob(sampleChunk);
       const bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
       
@@ -73,26 +76,35 @@ const AudioPlayer = ({
 
   // PRIORIZAR audio_base64 se disponível
   const audioDisplayUrl = useMemo(() => {
-    if (audioData) {
-      const format = detectAudioFormat(audioData);
-      const mimeType = format === 'ogg' ? 'audio/ogg; codecs=opus' : 
-                      format === 'wav' ? 'audio/wav' : 
-                      format === 'mp3' ? 'audio/mpeg' : 'audio/ogg';
-      
-      const dataUrl = `data:${mimeType};base64,${audioData}`;
-      
-      // 🔧 DEBUG: Log da conversão base64→data URL
+    if (!audioData) return null;
+
+    // Se já vier como data URL, usar como está (evita duplo prefixo)
+    if (audioData.startsWith('data:')) {
+      const mimeMatch = audioData.slice(5, audioData.indexOf(',')) || '';
       console.log('🎵 AudioPlayer DEBUG - Conversão base64:', {
-        formatDetectado: format,
-        mimeType,
-        dataUrlLength: dataUrl.length,
-        dataUrlPreview: dataUrl.substring(0, 100) + '...'
+        formatDetectado: detectAudioFormat(audioData),
+        mimeType: mimeMatch.replace(';base64', '') || 'unknown',
+        dataUrlLength: audioData.length,
+        dataUrlPreview: audioData.substring(0, 100) + '...'
       });
-      
-      return dataUrl;
+      return audioData;
     }
-    return null;
-  }, [audioData, detectAudioFormat]);
+
+    const format = detectAudioFormat(audioData);
+    const mimeType = format === 'ogg' ? 'audio/ogg; codecs=opus' : 
+                    format === 'wav' ? 'audio/wav' : 
+                    format === 'mp3' ? 'audio/mpeg' : 'audio/ogg';
+    const dataUrl = `data:${mimeType};base64,${audioData}`;
+
+    console.log('🎵 AudioPlayer DEBUG - Conversão base64:', {
+      formatDetectado: format,
+      mimeType,
+      dataUrlLength: dataUrl.length,
+      dataUrlPreview: dataUrl.substring(0, 100) + '...'
+    });
+
+    return dataUrl;
+  }, [audioData]);
 
   // Hook unificado apenas como fallback se não tiver base64
   const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({

@@ -445,7 +445,7 @@ serve(async (req) => {
                   shouldSaveAudio: true // Salvar o áudio mesmo sem transcrição
                 }),
                 { 
-                  status: 422,
+                  status: 200,
                   headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
                 }
               );
@@ -472,7 +472,7 @@ serve(async (req) => {
                   shouldSaveAudio: true
                 }),
                 { 
-                  status: 422,
+                  status: 200,
                   headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
                 }
               );
